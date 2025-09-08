@@ -1,0 +1,172 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY   = "${env.CUSTOM_DOCKER_REGISTRY}"
+        DOCKER_CREDENTIALS = "${env.CUSTOM_DOCKER_CREDENTIALS}"
+        DOCKER_IMAGE      = 'mangler/docgen-fastapi'
+        CONTAINER_NAME    = 'mangler-docgen-fastapi'
+        DOCKERFILE_PATH   = "deploy/dockerfile"
+        APP_PORT_INTERNAL = "8000"   // FastAPI가 컨테이너 내부에서 사용하는 포트
+        APP_PORT_EXTERNAL = "8182"   // 호스트에서 접근할 포트
+
+        ENV_FILE_CREDENTIALS_ID = "MANGLER_DOCGEN_FASTAPI_ENV_FILE"
+    }
+
+    stages {
+        stage('📥 Checkout') {
+            steps {
+                echo "📥 Git 저장소에서 코드 가져오기"
+                git branch: 'main', url: 'https://github.com/AICC-Mangler/docgen-fastapi.git'
+            }
+        }
+
+
+        stage('.env file 생성'){
+            steps{
+                script{
+                    withCredentials([
+                            file(credentialsId: ENV_FILE_CREDENTIALS_ID, variable: 'ENV_FILE')
+                        ]) {
+                            sh """
+                                echo "📄 환경 변수 파일 복사 중"
+                                cp "\$ENV_FILE" .env
+                                chmod 644 .env
+                                echo "✅ 환경 변수 파일 생성 완료"
+                            """
+                        }
+                    }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    try {
+                        echo "🐳 Docker 이미지 빌드 시작"
+
+                        def app = docker.build("${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}", "-f ${DOCKERFILE_PATH} .")
+
+                        // 빌드 성공 시 환경 변수 설정
+                        env.DOCKER_BUILD_SUCCESS = 'true'
+                        env.DOCKER_IMAGE_TAG = "${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
+
+                        echo "✅ Docker 이미지 빌드 성공"
+                        echo "📦 이미지 태그: ${env.DOCKER_IMAGE_TAG}"
+
+                    } catch (Exception e) {
+                        env.DOCKER_BUILD_SUCCESS = 'false'
+                        error "❌ Docker 빌드 실패: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            when {
+                environment name: 'DOCKER_BUILD_SUCCESS', value: 'true'
+            }
+            steps {
+                script {
+                    try {
+                        docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS}") {
+                            def app = docker.image("${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}")
+                            app.push("${BUILD_NUMBER}")
+
+                            // main 브랜치는 latest 태그도 푸시
+                            def currentBranch = env.GIT_BRANCH ?: 'develop'
+                            if (currentBranch.contains('main')) {
+                                app.push("latest")
+                                echo "✅ latest 태그 푸시 완료"
+                            }
+                        }
+
+                        env.DOCKER_PUSH_SUCCESS = 'true'
+                        echo "✅ Docker 이미지 푸시 성공: ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    } catch (Exception e) {
+                        env.DOCKER_PUSH_SUCCESS = 'false'
+                        echo "❌ Docker Registry 인증 또는 푸시 실패: ${e.getMessage()}"
+                        echo "🔍 Docker Registry: ${DOCKER_REGISTRY}"
+                        echo "🔍 Credentials ID: ${DOCKER_CREDENTIALS}"
+                        error "Docker 푸시 실패: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Container') {
+            when {
+                environment name: 'DOCKER_PUSH_SUCCESS', value: 'true'
+            }
+            steps {
+                script {
+                    def currentBranch = env.CURRENT_BRANCH ?: env.BRANCH_NAME ?: 'main'
+                    def deployEnv = currentBranch.contains('main') ? 'production' : 'development'
+                    def containerName = "${CONTAINER_NAME}-${deployEnv}"
+                    def containerPort = deployEnv == 'production' ? '3000' : '3001'
+                    def dockerNetwork = 'demo-net'
+
+                    echo "🚀 배포 시작: ${deployEnv} 환경"
+                    echo "📦 컨테이너: ${containerName}"
+                    echo "🔌 포트: ${containerPort}"
+                    echo "📦 이미지: ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
+
+                    try {
+                        // Docker Registry 인증 후 이미지 pull
+                        docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS}") {
+                            sh "docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                        }
+
+                        sh """
+                            # 기존 컨테이너 중지 및 삭제
+                            docker stop ${containerName} || true
+                            docker rm ${containerName} || true
+
+                            # 새 컨테이너 실행
+                            docker run -d \\
+                                --name ${containerName} \\
+                                --network ${dockerNetwork} \\
+                                --restart unless-stopped \\
+                                --label "app=docgen-fastapi" \\
+                                --label "env=${deployEnv}" \\
+                                --label "version=${BUILD_NUMBER}" \\
+                                --label "branch=${currentBranch}" \\
+                                --label "commit=${env.GIT_COMMIT_SHORT}" \\
+                                -p ${APP_PORT_EXTERNAL}:${APP_PORT_INTERNAL} \\
+                                ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}
+
+                            # 컨테이너 상태 확인
+                            sleep 5
+                            docker ps | grep ${containerName}
+                            echo "✅ 컨테이너 ${containerName} 배포 완료"
+                        """
+
+                        env.DEPLOY_SUCCESS = 'true'
+
+                    } catch (Exception e) {
+                        env.DEPLOY_SUCCESS = 'false'
+                        echo "❌ 배포 실패: ${e.getMessage()}"
+                        error "배포 실패: ${e.getMessage()}"
+                    }
+
+                    // 배포 후 헬스 체크
+                    if (env.DEPLOY_SUCCESS == 'true') {
+                        sh """
+                            echo "🔍 헬스 체크 시작"
+                            sleep 5
+                            for i in \$(seq 1 10); do
+                                if curl -f http://localhost:${APP_PORT_EXTERNAL} > /dev/null 2>&1; then
+                                    echo "✅ 애플리케이션이 정상적으로 실행 중입니다"
+                                    break
+                                else
+                                    echo "⏳ 대기 중... (\$i/10)"
+                                    sleep 3
+                                fi
+                            done
+                        """
+                    }
+                }
+            }
+        }
+    }
+}

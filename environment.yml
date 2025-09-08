@@ -1,0 +1,24 @@
+name: docgen-fastapi
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - fastapi
+      - uvicorn[standard]
+      - pydantic
+      - python-multipart
+      - requests
+      - gunicorn
+      - motor             
+      - python-dotenv
+      - langchain
+      - langchain-openai
+      - langchain-google-genai
+      - langchain-anthropic
+      - openai
+      - openpyxl
+      - crewai
+      - crewai[tools]
