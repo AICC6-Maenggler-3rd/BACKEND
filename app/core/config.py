@@ -1,0 +1,15 @@
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    MONGO_URI: str
+    MONGO_DB_NAME: str
+    openai_api_key: str
+    claude_api_key: str
+    langchain_tracing_v2: bool
+    langchain_endpoint: str
+    langchain_api_key: str
+    langchain_project: str
+    class Config:
+        env_file = ".env"
+
+settings = Settings()

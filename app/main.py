@@ -4,8 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import uuid
 import os
-from api.routers import api_router
-
+from app.api.routers import api_router
+from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.middlewares.log_middleware import UserLogMiddleware
 app = FastAPI()
 
 # CORS 설정 (React 개발 서버: http://localhost:5180)
@@ -35,3 +36,15 @@ async def upload_pdf(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
 
     return {"file_id": file_id, "filename": file.filename, "status": "uploaded"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    connect_to_mongo()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    close_mongo_connection()
+
+# 로그 미들웨어 등록
+app.add_middleware(UserLogMiddleware)

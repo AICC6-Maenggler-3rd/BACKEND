@@ -9,6 +9,7 @@ dependencies:
       - fastapi
       - uvicorn[standard]
       - pydantic
+      - pydantic-settings
       - python-multipart
       - requests
       - gunicorn
