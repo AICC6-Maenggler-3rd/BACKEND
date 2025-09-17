@@ -1,4 +1,4 @@
-name: docgen-fastapi
+name: inpick-fastapi
 channels:
   - conda-forge
   - defaults

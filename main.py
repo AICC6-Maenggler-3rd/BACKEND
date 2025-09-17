@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import uuid
 import os
+from api.routers import api_router
 
 app = FastAPI()
 
@@ -18,6 +19,8 @@ app.add_middleware(
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.include_router(api_router, prefix="/api")
 
 @app.get("/")
 async def root():

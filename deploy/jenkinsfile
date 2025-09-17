@@ -4,20 +4,20 @@ pipeline {
     environment {
         DOCKER_REGISTRY   = "${env.CUSTOM_DOCKER_REGISTRY}"
         DOCKER_CREDENTIALS = "${env.CUSTOM_DOCKER_CREDENTIALS}"
-        DOCKER_IMAGE      = 'mangler/docgen-fastapi'
-        CONTAINER_NAME    = 'mangler-docgen-fastapi'
+        DOCKER_IMAGE      = 'mangler/inpick-fastapi'
+        CONTAINER_NAME    = 'mangler-inpick-fastapi'
         DOCKERFILE_PATH   = "deploy/dockerfile"
         APP_PORT_INTERNAL = "8000"   // FastAPI가 컨테이너 내부에서 사용하는 포트
-        APP_PORT_EXTERNAL = "8182"   // 호스트에서 접근할 포트
+        APP_PORT_EXTERNAL = "8382"   // 호스트에서 접근할 포트
 
-        ENV_FILE_CREDENTIALS_ID = "MANGLER_DOCGEN_FASTAPI_ENV_FILE"
+        ENV_FILE_CREDENTIALS_ID = "MANGLER_INPICK_BACKEND_ENV_FILE"
     }
 
     stages {
         stage('📥 Checkout') {
             steps {
                 echo "📥 Git 저장소에서 코드 가져오기"
-                git branch: 'main', url: 'https://github.com/AICC-Mangler/docgen-fastapi.git'
+                git branch: 'main', url: 'https://github.com/AICC6-Maenggler-3rd/BACKEND'
             }
         }
 
