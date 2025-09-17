@@ -17,7 +17,7 @@ pipeline {
         stage('📥 Checkout') {
             steps {
                 echo "📥 Git 저장소에서 코드 가져오기"
-                git branch: 'main', url: 'https://github.com/AICC6-Maenggler-3rd/BACKEND.git'
+                git branch: 'main', url: 'https://github.com/AICC6-Maenggler-3rd/BACKEND.git',credentialsId: 'Mangler-3rd-git'
             }
         }
 
