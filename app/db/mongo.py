@@ -1,8 +1,8 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.core.config import settings
 
 client: AsyncIOMotorClient = None
-db = None
+db: AsyncIOMotorDatabase = None
 
 def connect_to_mongo():
     global client, db
