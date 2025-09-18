@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     langchain_endpoint: str
     langchain_api_key: str
     langchain_project: str
+    google_client_id: str
+    google_client_secret: str
+    google_redirect_uri: str
     class Config:
         env_file = ".env"
 

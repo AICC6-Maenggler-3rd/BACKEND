@@ -21,7 +21,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="")
 
 @app.get("/")
 async def root():
@@ -40,11 +40,11 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 @app.on_event("startup")
 async def startup_event():
-    connect_to_mongo()
+    await connect_to_mongo()
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    close_mongo_connection()
+    await close_mongo_connection()
 
 # 로그 미들웨어 등록
 app.add_middleware(UserLogMiddleware)
