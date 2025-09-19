@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Response, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
 from app.auth.google_oauth import get_google_login_url, get_google_tokens, get_google_userinfo
-from app.services.session_service import create_session, delete_session
+from app.services.session_service import create_session, delete_session, get_session
 from app.auth.dependencies import get_current_user
 from bson.objectid import ObjectId
+from app.services.activity_log_service import create_activity_log
+from app.schemas.activity_log_schema import ActivityLogBase
 
 router = APIRouter()
 
@@ -15,12 +17,17 @@ async def google_login():
 @router.get("/google/callback")
 async def google_callback(request: Request, response: Response, code: str):
 
+    # 쿠키에서 세션 가져오기
     existing_session_id = request.cookies.get("session_id")
     if existing_session_id:
-        # 세션이 유효하면 바로 프론트로 리다이렉트
-        session = await get_current_user(request)
-        if session:
-            return RedirectResponse(url="http://localhost:5180/userinfo")
+        try:
+            session = await get_current_user(request, response)
+            if session:
+                # 유효한 세션이면 바로 프론트로 리다이렉트
+                return RedirectResponse(url="http://localhost:5180/userinfo")
+        except HTTPException:
+            # 세션 만료면 무시하고 새 로그인 진행
+            pass
 
     from app.db.mongo import db
 
@@ -46,6 +53,13 @@ async def google_callback(request: Request, response: Response, code: str):
 
     # 세션 발급
     session_id = await create_session(user_id)
+
+    log = ActivityLogBase(
+        user_id=user_id,
+        action="login",
+        metadata={}
+    )
+    await create_activity_log(log)
 
     redirect = RedirectResponse(url="http://localhost:5180/userinfo")
     redirect.set_cookie(
@@ -77,6 +91,8 @@ async def get_auth_user(user=Depends(get_current_user)):
 async def logout(request: Request, response: Response):
     session_id = request.cookies.get("session_id")
     if session_id:
+        
+        user_id = await get_current_user(request, response)
         # DB에서 세션 삭제
         await delete_session(session_id)
 
@@ -87,5 +103,12 @@ async def logout(request: Request, response: Response):
             httponly=True,
             samesite="lax"
         )
+
+        log = ActivityLogBase(
+            user_id=user_id,
+            action="logout",
+            metadata={} 
+        )
+        await create_activity_log(log)
 
     return {"message": "Logged out successfully"}

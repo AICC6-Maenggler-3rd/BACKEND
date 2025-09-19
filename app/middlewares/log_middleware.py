@@ -1,15 +1,21 @@
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import Request
+from fastapi import Request, Response
 from starlette.background import BackgroundTasks
 from app.services.log_service import create_log
-
+from app.auth.dependencies import get_current_user
 class UserLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-
-        # BackgroundTasks를 사용해 비동기 로그 저장
+        # BackgroundTasks 초기화
         background = BackgroundTasks()
-        user_id = request.headers.get("X-User-Id", "anonymous")
+
+        user_id = "anonymous"
+        try:
+            # get_current_user를 통해 세션 확인 + 갱신
+            user_id = await get_current_user(request, response)
+        except Exception:
+            # 로그인 안되어 있으면 anonymous 처리
+            pass
         action = f"{request.method} {request.url.path}"
         ip = request.client.host
         user_agent = request.headers.get("user-agent", "unknown")
