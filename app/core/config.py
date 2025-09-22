@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     naver_client_id: str
     naver_client_secret: str
     naver_redirect_uri: str
+    kakao_client_id: str
+    kakao_client_secret: str
+    kakao_redirect_uri: str
     class Config:
         env_file = ".env"
 
