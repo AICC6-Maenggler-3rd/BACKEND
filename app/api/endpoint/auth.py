@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Response, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
 from app.auth.google_oauth import get_google_login_url, get_google_tokens, get_google_userinfo
+from app.auth.naver_oauth import get_naver_tokens, get_naver_userinfo, get_naver_login_url
 from app.services.session_service import create_session, delete_session, get_session
 from app.auth.dependencies import get_current_user
 from bson.objectid import ObjectId
 from app.services.activity_log_service import create_activity_log
 from app.schemas.activity_log_schema import ActivityLogBase
-
 router = APIRouter()
 
 @router.get("/google/login")
@@ -58,6 +58,56 @@ async def google_callback(request: Request, response: Response, code: str):
         user_id=user_id,
         action="login",
         metadata={}
+    )
+    await create_activity_log(log)
+
+    redirect = RedirectResponse(url="http://localhost:5180/userinfo")
+    redirect.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        max_age=1800,
+        samesite="lax",
+        secure=False
+    )
+    return redirect
+
+@router.get("/naver/login")
+async def naver_login():
+    url = get_naver_login_url()
+    return {"auth_url": url}
+
+@router.get("/naver/callback")
+async def naver_callback(request: Request, response: Response, code: str, state: str):
+    try:
+        tokens = await get_naver_tokens(code, state)
+        userinfo = await get_naver_userinfo(tokens["access_token"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="네이버 로그인 실패")
+
+    from app.db.mongo import db
+    # ✅ 동일한 users 컬렉션 사용
+    user = await db.users.find_one({"email": userinfo["email"]})
+    if not user:
+        new_user = {
+            "email": userinfo["email"],
+            "name": userinfo.get("name"),
+            "picture": userinfo.get("profile_image"),
+            "provider": "naver",
+        }
+        result = await db.users.insert_one(new_user)
+        user_id = str(result.inserted_id)
+    else:
+        user_id = str(user["_id"])
+
+    # ✅ 동일한 세션 발급 로직 사용
+    session_id = await create_session(user_id)
+
+    # ✅ 로그인 로그 기록
+    log = ActivityLogBase(
+        user_id=user_id,
+        action="login",
+        metadata={"provider": "naver"}
     )
     await create_activity_log(log)
 

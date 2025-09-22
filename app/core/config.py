@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     google_client_id: str
     google_client_secret: str
     google_redirect_uri: str
+    naver_client_id: str
+    naver_client_secret: str
+    naver_redirect_uri: str
     class Config:
         env_file = ".env"
 
