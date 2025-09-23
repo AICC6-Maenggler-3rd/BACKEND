@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     kakao_client_id: str
     kakao_client_secret: str
     kakao_redirect_uri: str
+    ncp_client_id:str
+    ncp_client_secret:str
     class Config:
         env_file = ".env"
 
