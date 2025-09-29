@@ -8,6 +8,9 @@ from app.schemas.activity_log_schema import ActivityLogBase
 from app.auth.google import GoogleOAuth
 from app.auth.naver import NaverOAuth
 from app.auth.kakao import KakaoOAuth
+from app.repositories import userdb
+from app.db.postgresql import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter()
 
 PROVIDERS = {
@@ -25,7 +28,7 @@ async def social_login(provider: str):
 
 
 @router.get("/{provider}/callback")
-async def social_callback(provider: str, request: Request, response: Response, code: str):
+async def social_callback(provider: str, request: Request, response: Response, code: str , db: AsyncSession = Depends(get_db)):
     if provider not in PROVIDERS:
         return {"error": "Unsupported provider"}
     
@@ -45,29 +48,41 @@ async def social_callback(provider: str, request: Request, response: Response, c
     tokens = await oauth.get_tokens(code)
     userinfo = await oauth.fetch_user_info(tokens)
 
-    from app.db.mongo import db
+    from app.db.mongo import db as mongo
 
-    # 이메일 기준 DB 조회/생성
-    email = None
+    # provider_user_id 추출
     if provider == "google":
-        email = userinfo["email"]
+        provider_user_id = userinfo.get("id")
+        email = userinfo.get("email")
+        name = userinfo.get("name")
+        # picture = userinfo.get("picture")
     elif provider == "naver":
-        email = userinfo["email"]
+        provider_user_id = userinfo["response"].get("id")
+        email = userinfo.get("email")
+        name = userinfo.get("name")
+        # picture = userinfo.get("profile_image")
     elif provider == "kakao":
-        email = userinfo["kakao_account"].get("email")
+        provider_user_id = str(userinfo.get("id"))
+        kakao_account = userinfo.get("kakao_account", {})
+        email = kakao_account.get("email")
+        profile = kakao_account.get("profile", {})
+        name = profile.get("nickname")
+        # picture = profile.get("profile_image_url")
 
-    user = await db.users.find_one({"email": email})
-    if not user:
-        new_user = {
-            "email": email,
-            "name": userinfo.get("name") or userinfo.get("kakao_account", {}).get("profile", {}).get("nickname"),
-            "picture": userinfo.get("picture") or userinfo.get("kakao_account", {}).get("profile", {}).get("profile_image_url"),
-            "provider": provider,
-        }
-        result = await db.users.insert_one(new_user)
-        user_id = str(result.inserted_id)
-    else:
-        user_id = str(user["_id"])
+    print(userinfo)
+    _user = await userdb.get_user_by_provider(db, provider, provider_user_id)
+
+    if not _user:
+        _user = await userdb.create_user(
+            db=db,
+            email=email,
+            name=name,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            role="user"
+        )
+    user_id = _user.user_id
+    await userdb.update_last_login(db, _user.user_id)
 
     session_id = await create_session(user_id)
 
@@ -84,18 +99,21 @@ async def social_callback(provider: str, request: Request, response: Response, c
 
 
 @router.get("/user")
-async def get_auth_user(user=Depends(get_current_user)):
-    from app.db.mongo import db
-    user_info = await db.users.find_one({"_id": ObjectId(user)})
-    print(user_info)
+async def get_auth_user(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # user_info = await db.users.find_one({"_id": ObjectId(user)})
+    user_info = await userdb.get_user(db,user)
     user_data = {
-        "id": str(user_info["_id"]),
-        "email": user_info.get("email"),
-        "name": user_info.get("name"),
-        "picture": user_info.get("picture"),
-        "provider": user_info.get("provider")
+        "id": str(user_info.user_id),
+        "email": user_info.email,
+        "name": user_info.name,
+        "provider": user_info.provider
     }
     return {"user": user_data}
+
+@router.get("/users")
+async def get_users(db: AsyncSession = Depends(get_db)):
+    users = await userdb.get_users(db)
+    return {"users": users}
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):

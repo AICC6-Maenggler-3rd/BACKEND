@@ -23,3 +23,7 @@ dependencies:
       - openpyxl
       - crewai
       - crewai[tools]
+      - psycopg2-binary
+      - asyncpg
+      - databases
+      - sqlalchemy

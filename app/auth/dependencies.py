@@ -7,6 +7,7 @@ async def get_current_user(request: Request, response: Response):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not logged in")
 
     session = await refresh_user_session(request, response)
+    # print("session : ",session)
     if not session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
 

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 SESSION_EXPIRE_SECONDS = 1800
 
-async def create_session(user_id: str):
+async def create_session(user_id: int):
     from app.db.mongo import db
     session_id = str(uuid.uuid4())
     expires_at = datetime.utcnow() + timedelta(seconds=SESSION_EXPIRE_SECONDS)

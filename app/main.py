@@ -6,8 +6,12 @@ import uuid
 import os
 from app.api.routers import api_router
 from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.db.postgresql import engine, Base
+
 from app.middlewares.log_middleware import UserLogMiddleware
 app = FastAPI()
+
+
 
 # CORS 설정 (React 개발 서버: http://localhost:5180)
 app.add_middleware(
@@ -17,6 +21,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)

@@ -1,7 +1,7 @@
 from app.schemas.log_schema import UserLogSchema
 
 async def create_log(
-    user_id: str,
+    user_id: int,
     action: str,
     ip: str,
     user_agent: str,

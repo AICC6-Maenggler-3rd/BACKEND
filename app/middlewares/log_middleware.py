@@ -9,7 +9,7 @@ class UserLogMiddleware(BaseHTTPMiddleware):
         # BackgroundTasks 초기화
         background = BackgroundTasks()
 
-        user_id = "anonymous"
+        user_id = -1 # "anonymous"
         try:
             # get_current_user를 통해 세션 확인 + 갱신
             user_id = await get_current_user(request, response)

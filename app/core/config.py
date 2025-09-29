@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     MONGO_URI: str
     MONGO_DB_NAME: str
+    postgresql_url: str
     openai_api_key: str
     claude_api_key: str
     langchain_tracing_v2: bool
@@ -18,6 +19,8 @@ class Settings(BaseSettings):
     kakao_client_id: str
     kakao_client_secret: str
     kakao_redirect_uri: str
+    ncp_client_id: str | None = None
+    ncp_client_secret: str | None = None
     class Config:
         env_file = ".env"
 

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, Dict
 
 class UserLogSchema(BaseModel):
-    user_id: str
+    user_id: int
     action: str
     ip: str
     user_agent: str
