@@ -47,6 +47,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
     oauth = PROVIDERS[provider]
     tokens = await oauth.get_tokens(code)
     userinfo = await oauth.fetch_user_info(tokens)
+    print(userinfo)
 
     from app.db.mongo import db as mongo
 
@@ -57,7 +58,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
         name = userinfo.get("name")
         # picture = userinfo.get("picture")
     elif provider == "naver":
-        provider_user_id = userinfo["response"].get("id")
+        provider_user_id = userinfo.get("id")
         email = userinfo.get("email")
         name = userinfo.get("name")
         # picture = userinfo.get("profile_image")
@@ -69,7 +70,6 @@ async def social_callback(provider: str, request: Request, response: Response, c
         name = profile.get("nickname")
         # picture = profile.get("profile_image_url")
 
-    print(userinfo)
     _user = await userdb.get_user_by_provider(db, provider, provider_user_id)
 
     if not _user:
