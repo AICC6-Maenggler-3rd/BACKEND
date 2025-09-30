@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoint import example, auth
+from app.api.endpoint import example, auth, map
 
 api_router = APIRouter()
 
@@ -13,4 +13,10 @@ api_router.include_router(
   auth.router,
   prefix='/auth',
   tags=["Auth"]
+)
+
+api_router.include_router(
+  map.router,
+  prefix='/map',
+  tags=["map"]
 )
