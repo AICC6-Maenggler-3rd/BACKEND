@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     kakao_redirect_uri: str
     ncp_client_id:str
     ncp_client_secret:str
+    tmap_api_key:str
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()
