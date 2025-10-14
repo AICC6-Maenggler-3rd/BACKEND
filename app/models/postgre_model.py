@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, TIMESTAMP, ForeignKey, func, Table
+    Column, Integer, String, Text, Boolean, TIMESTAMP, ForeignKey, func, Table,Float
 )
 from sqlalchemy.orm import relationship, declarative_base
 
@@ -56,8 +56,8 @@ class Place(Base):
     place_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(30), nullable=False)
     address = Column(String(255), nullable=False)
-    address_la = Column(Text, nullable=False)
-    address_lo = Column(Text, nullable=False)
+    address_la = Column(Float, nullable=False)
+    address_lo = Column(Float, nullable=False)
     type = Column(String(20), nullable=False)
     count = Column(Integer, nullable=False, default=0)
     website = Column(Text, nullable=True)
