@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request,Query
 from pydantic import BaseModel
 import httpx
 from app.core.config import settings
-
+from app.schemas.route_path_schema import MapPoint, RoutePathSchema
+from app.services.map_path_service import find_paths
 router = APIRouter()
 
 NAVER_DIRECTIONS_URL = "https://maps.apigw.ntruss.com/map-direction/v1/driving"
@@ -65,6 +66,8 @@ class RouteRequest(BaseModel):
             points.append(str(point['x'])+","+str(point['y']))
         return "_".join(points)
 
+
+
 @router.post("/route")
 async def get_route(req: RouteRequest):
     url = "https://apis.openapi.sk.com/tmap/routes?version=1&format=json&callback=result&appKey=" + settings.tmap_api_key
@@ -72,7 +75,6 @@ async def get_route(req: RouteRequest):
     search_option = 0
 
     # TMAP 교통수단에 따른 옵션
-    
         
     payload = {
         "startX": req.startX,
@@ -120,3 +122,20 @@ async def get_route(req: RouteRequest):
 
     print("route_coords")
     return {"route": remove_duplicates(route_coords)}
+
+
+class PathRequest(BaseModel):
+    waypoints: list[MapPoint]
+    transport: str = "CAR"
+
+class PathResponse(BaseModel):
+    start_point: MapPoint
+    end_point: MapPoint
+    path: list[MapPoint]
+    distance: float
+    duration: float
+    transport: str
+
+@router.post("/path")
+async def get_path(req: PathRequest) -> PathResponse:
+    return await find_paths(req.waypoints, req.transport)
