@@ -35,3 +35,7 @@ async def refresh_session(session_id: str) -> int:
         {"$set": {"expires_at": new_expiry_time}}
     )
     return SESSION_EXPIRE_SECONDS
+
+async def delete_user_sessions(user_id: int):
+    from app.db.mongo import db as mongo
+    await mongo.sessions.delete_many({"user_id": user_id})
