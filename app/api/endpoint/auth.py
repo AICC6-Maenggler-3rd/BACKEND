@@ -106,7 +106,8 @@ async def get_auth_user(user=Depends(get_current_user), db: AsyncSession = Depen
         "id": str(user_info.user_id),
         "email": user_info.email,
         "name": user_info.name,
-        "provider": user_info.provider
+        "provider": user_info.provider,
+        "role": user_info.role
     }
     return {"user": user_data}
 
