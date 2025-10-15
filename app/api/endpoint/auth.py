@@ -11,6 +11,10 @@ from app.auth.kakao import KakaoOAuth
 from app.repositories import userdb
 from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.user_service import UserService
+from app.schemas.user_schema import (UserDeleteRequest, UserDeleteResponse)
+from datetime import datetime, timezone
+
 router = APIRouter()
 
 PROVIDERS = {
@@ -39,7 +43,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
             session = await get_current_user(request, response)
             if session:
                 # 유효한 세션이면 바로 프론트로 리다이렉트
-                return RedirectResponse(url="http://localhost:5180/userinfo")
+                return RedirectResponse(url="http://localhost:5180/")
         except HTTPException:
             # 세션 만료면 무시하고 새 로그인 진행
             pass
@@ -93,7 +97,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
     )
     await create_activity_log(log)
 
-    redirect = RedirectResponse(url="http://localhost:5180/userinfo")
+    redirect = RedirectResponse(url="http://localhost:5180/")
     redirect.set_cookie("session_id", session_id, httponly=True, max_age=1800, samesite="lax", secure=False)
     return redirect
 
@@ -146,3 +150,43 @@ async def logout(request: Request, response: Response):
         await create_activity_log(log)
 
     return {"message": "Logged out successfully"}
+
+@router.delete("/user", response_model=UserDeleteResponse)
+async def delete_current_user(
+    request: Request,
+    response: Response,
+    delete_request: UserDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    # 현재 로그인 사용자 식별
+    current_user_id = await get_current_user(request, response)
+    
+    # 상태 기반 soft delete 처리 (status='deactive')
+    result = await UserService.soft_delete_user(db, current_user_id)
+    
+    # 성공 시 세션/쿠키 제거
+    if result.get("success"):
+        session_id=request.cookies.get("session_id")
+        if session_id:
+            await delete_session(session_id)
+            response.delete_cookie(
+                "session_id",
+                path="/",
+                httponly=True,
+                samesite="lax"
+            )
+    
+    # 서비스 실행 시간에 따른 대비 기본값
+    updated_at = result.get("updated_at")
+    deactivated_at = result.get("deactivated_at")
+
+    if not updated_at:
+        updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    return UserDeleteResponse(
+        success=result.get("success", False),
+        message=result.get("message", ""),
+        status=result.get("status", "deactive"),
+        updated_at=updated_at,
+        deactivated_at=deactivated_at,
+    )

@@ -5,24 +5,18 @@ from sqlalchemy import update, func
 from app.models.postgre_model import Place
 from datetime import datetime, timezone
 import math
+from pydantic import BaseModel
+from typing import List
+from app.schemas.place_schema import PlaceSchema, PlaceListResponse
 
-async def search_place(db: AsyncSession, query: str, page: int, limit: int):
-    offset = (page - 1) * limit
-    result = await db.execute(
-        select(Place).where(
-            Place.name.ilike(f"%{query}%")
-        ).order_by(Place.place_id.asc()).offset(offset).limit(limit)
-    )
-    total_count = await db.execute(
-        select(func.count()).select_from(Place).where(
-            Place.name.ilike(f"%{query}%")
-        )
-    )
-    page_count = (total_count.scalar_one() + limit - 1) // limit
-    return {
-        "data": result.scalars().all(),
-        "total_pages": page_count
-    }
+
+
+
+async def search_place(db: AsyncSession, query: str, page: int, limit: int) -> PlaceListResponse:
+    search_query = select(Place).where(
+        Place.name.ilike(f"%{query}%")
+    ).order_by(Place.place_id.asc())
+    return await paginate(db, search_query, page, limit)    
 
 async def get_place(db: AsyncSession, place_id: int) -> Place:
     result = await db.execute(
@@ -32,7 +26,7 @@ async def get_place(db: AsyncSession, place_id: int) -> Place:
     )
     return result.scalar_one_or_none()
 
-async def get_place_list(db: AsyncSession, page: int, limit: int, lat: float, lng: float, radius:float):
+async def get_place_list(db: AsyncSession, page: int, limit: int) -> PlaceListResponse:
     """
     장소 목록 조회
     params:
@@ -42,24 +36,34 @@ async def get_place_list(db: AsyncSession, page: int, limit: int, lat: float, ln
         data: list[Place]
         total_pages: int
     """
-    offset = (page - 1) * limit
-    if lat != -1 and lng != -1 and radius != -1:
-        result = await db.execute(
-            get_places_within_radius_query(lat, lng, radius).offset(offset).limit(limit)
-        )
-    else:
-        result = await db.execute(
-            select(Place).order_by(Place.place_id.asc()).offset(offset).limit(limit)
-        )
-    total_count = await db.execute(
-        select(func.count()).select_from(Place)
-    )
-    page_count = (total_count.scalar_one() + limit - 1) // limit
+    result = await paginate(db, select(Place).order_by(Place.place_id.asc()), page, limit)
 
-    return {
-        "data": result.scalars().all(),
-        "total_pages": page_count
-    }
+    return result
+
+async def get_place_list_by_address(db: AsyncSession, address: str, page: int, limit: int) -> PlaceListResponse:
+    search_query = get_place_list_by_address_query(address)
+    return await paginate(db, search_query, page, limit)
+
+
+async def get_place_list_by_address_and_radius(db: AsyncSession, lat: float, lng: float, radius: float, page: int, limit: int) -> PlaceListResponse:
+    search_query = get_places_within_radius_query(lat, lng, radius)
+    return await paginate(db, search_query, page, limit)
+
+
+async def paginate(db: AsyncSession, query, page: int, limit: int):
+    offset = (page - 1) * limit
+    result = await db.execute(query.offset(offset).limit(limit))
+    total_count = await db.execute(select(func.count()).select_from(query))
+    page_count = (total_count.scalar_one() + limit - 1) // limit
+    return PlaceListResponse(
+        places=[PlaceSchema.model_validate(place, from_attributes=True) for place in result.scalars().all()],
+        total_pages=page_count
+    )
+def get_place_list_by_address_query(address: str):
+    return select(Place).where(
+            Place.address.ilike(f"%{address}%")
+        ).order_by(Place.place_id.asc())
+
 
 def get_places_within_radius_query(lat0: float, lng0: float, radius_m: float):
     """

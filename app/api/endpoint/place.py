@@ -4,10 +4,11 @@ from app.auth.dependencies import get_current_user
 from app.repositories import placedb
 from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.place_schema import PlaceListResponse
 router = APIRouter()
 
 @router.get("/search")
-async def search_place(query: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)):
+async def search_place(query: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
     try:
         place_list = await placedb.search_place(db, query, page, limit)
         return place_list
@@ -15,10 +16,29 @@ async def search_place(query: str, page: int = 1, limit: int = 30, db: AsyncSess
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/list")
-async def get_place_list(page: int = 1, limit: int = 30, lat: float = -1, lng: float = -1, radius: float = -1, db: AsyncSession = Depends(get_db)):
+@router.get("/list/address")
+async def get_place_list_by_address(address: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
     try:
-        place_list = await placedb.get_place_list(db, page, limit, lat, lng, radius)
+        print(address, page, limit)
+        place_list = await placedb.get_place_list_by_address(db,address, page, limit)
+        return place_list
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/list/radius")
+async def get_place_list_by_radius(lat: float, lng: float, radius: float, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
+    try:
+        place_list = await placedb.get_place_list_by_address_and_radius(db, lat, lng, radius, page, limit)
+        return place_list
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/list")
+async def get_place_list(page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
+    try:
+        place_list = await placedb.get_place_list(db, page, limit)
         return place_list
     except Exception as e:
         print(e)

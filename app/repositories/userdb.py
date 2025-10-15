@@ -64,3 +64,23 @@ async def update_last_login(db: AsyncSession, user_id: int):
         .values(last_login_at=now_utc_naive) 
     )
     await db.commit()
+
+# ✅ 사용자 삭세 및 상태 업데이트
+async def soft_delete_user(db: AsyncSession, user_id: int) -> AppUser | None:
+    now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    stmt = (
+        update(AppUser)
+        .where(AppUser.user_id == user_id)
+        .values(
+            deleted_at=now_utc_naive,
+            status="deactive",
+        )
+        .returning(AppUser)
+    )
+    result = await db.execute(stmt)
+
+    await db.commit()
+
+    updated_user = result.scalar_one_or_none()
+
+    return updated_user
