@@ -143,3 +143,12 @@ class Category(Base):
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
 
     places = relationship("Place", secondary=place_category_table, back_populates="categories")
+
+class Region(Base):
+    __tablename__ = "region"
+    __table_args__ = {"schema": "public"}
+
+    region_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(30), nullable=False)
+    address_la = Column(Float, nullable=False)
+    address_lo = Column(Float, nullable=False)

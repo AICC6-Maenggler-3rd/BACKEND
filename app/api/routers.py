@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoint import example, auth, map, place , accommodation, manage, itinerary
+from app.api.endpoint import example, auth, map, place , accommodation, manage, itinerary , region
 
 
 api_router = APIRouter()
@@ -45,4 +45,10 @@ api_router.include_router(
   manage.router,
   prefix='/manage',
   tags=["manage"]
+)
+
+api_router.include_router(
+  region.router,
+  prefix='/region',
+  tags=["region"]
 )
