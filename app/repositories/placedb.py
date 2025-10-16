@@ -49,6 +49,27 @@ async def get_place_list_by_address_and_radius(db: AsyncSession, lat: float, lng
     search_query = get_places_within_radius_query(lat, lng, radius)
     return await paginate(db, search_query, page, limit)
 
+async def get_places(db: AsyncSession) -> list[Place]:
+    """모든 장소 조회"""
+    result = await db.execute(select(Place))
+    return result.scalars().all()
+
+async def get_insta_nicknames(db: AsyncSession) -> list[str]:
+    """인스타그램 닉네임 목록 조회 (중복 제거)"""
+    result = await db.execute(
+        select(Place.insta_nickname)
+        .where(Place.insta_nickname.isnot(None))
+        .distinct()
+    )
+    return [nickname for nickname in result.scalars().all() if nickname]
+
+async def get_places_by_insta_nickname(db: AsyncSession, insta_nickname: str, page: int, limit: int) -> PlaceListResponse:
+    """특정 인스타그램 닉네임으로 장소 조회"""
+    search_query = select(Place).where(
+        Place.insta_nickname == insta_nickname
+    ).order_by(Place.place_id.asc())
+    return await paginate(db, search_query, page, limit)
+
 
 async def paginate(db: AsyncSession, query, page: int, limit: int):
     offset = (page - 1) * limit
