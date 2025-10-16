@@ -26,6 +26,12 @@ async def get_place(db: AsyncSession, place_id: int) -> Place:
     )
     return result.scalar_one_or_none()
 
+async def get_random_place(db: AsyncSession) -> Place:
+    result = await db.execute(
+        select(Place).order_by(func.random()).limit(1)
+    )
+    return result.scalars().first()
+
 async def get_place_list(db: AsyncSession, page: int, limit: int) -> PlaceListResponse:
     """
     장소 목록 조회
