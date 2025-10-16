@@ -76,7 +76,31 @@ async def social_callback(provider: str, request: Request, response: Response, c
 
     _user = await userdb.get_user_by_provider(db, provider, provider_user_id)
 
-    if not _user:
+    # if not _user:
+    #     _user = await userdb.create_user(
+    #         db=db,
+    #         email=email,
+    #         name=name,
+    #         provider=provider,
+    #         provider_user_id=provider_user_id,
+    #         role="user"
+    #     )
+
+    if _user:
+        if _user.status == "deactive":
+            reactivation_result = await UserService.reactivate_user(db, _user.user_id)
+
+            if not reactivation_result.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"사용자 재활성화에 실패했습니다: {reactivation_result.get('message', '활성화 오류')}"
+                )
+
+                _user = reactivation_result["user"]
+
+                print(f"User ID {_user.user_id} was reactivated and logged in.")
+
+    else:
         _user = await userdb.create_user(
             db=db,
             email=email,
@@ -85,6 +109,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
             provider_user_id=provider_user_id,
             role="user"
         )
+        
     user_id = _user.user_id
     await userdb.update_last_login(db, _user.user_id)
 
