@@ -41,3 +41,31 @@ class UserService:
       "status": "deactive",
       "deactivated_at": updated_user.deleted_at
     }
+
+  @staticmethod
+  async def reactivate_user(db: AsyncSession, user_id: int) -> dict:
+    user = await userdb.get_user(db, user_id)
+
+    if not user:
+      return {"success": False, "message": "사용자를 찾을 수 없습니다."}
+
+    if user.status == "active":
+      return {"success": True, "message": "이미 활성화된 사용자입니다."}
+
+    # 1. 상태 변경
+    user.status = "active"
+
+    # 2. deleted_at null로 초기화
+    user.deleted_at = None
+
+    try:
+      db.add(user)
+      await db.commit()
+      await db.refresh(user)
+      
+      return {"success": True, "message": "회원 상태가 active로 변경되었습니다.", "user": user}
+
+    except Exception as e:
+      await db.rollback()
+      return {"success": False, "message": f"사용자 재활성화에 실패했습니다: {e}" }
+
