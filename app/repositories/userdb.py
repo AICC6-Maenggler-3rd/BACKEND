@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy import update
 # from app.models.user import User 
 from app.models.postgre_model import AppUser
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 async def get_user(db: AsyncSession, user_id:int) -> AppUser:
     result = await db.execute(
@@ -57,22 +57,26 @@ async def create_user(db: AsyncSession, email: str, name: str,
 
 # ✅ 로그인 시 마지막 로그인 시간 업데이트
 async def update_last_login(db: AsyncSession, user_id: int):
-    now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    # 한국 시간 (UTC+9)으로 설정
+    kst = timezone(timedelta(hours=9))
+    now_kst_naive = datetime.now(kst).replace(tzinfo=None)
     await db.execute(
         update(AppUser)
         .where(AppUser.user_id == user_id)
-        .values(last_login_at=now_utc_naive) 
+        .values(last_login_at=now_kst_naive) 
     )
     await db.commit()
 
 # ✅ 사용자 삭세 및 상태 업데이트
 async def soft_delete_user(db: AsyncSession, user_id: int) -> AppUser | None:
-    now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    # 한국 시간 (UTC+9)으로 설정
+    kst = timezone(timedelta(hours=9))
+    now_kst_naive = datetime.now(kst).replace(tzinfo=None)
     stmt = (
         update(AppUser)
         .where(AppUser.user_id == user_id)
         .values(
-            deleted_at=now_utc_naive,
+            deleted_at=now_kst_naive,
             status="deactive",
         )
         .returning(AppUser)

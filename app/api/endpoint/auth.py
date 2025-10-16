@@ -115,10 +115,15 @@ async def get_auth_user(user=Depends(get_current_user), db: AsyncSession = Depen
     }
     return {"user": user_data}
 
-# @router.get("/users")
-# async def get_users(db: AsyncSession = Depends(get_db)):
-#     users = await userdb.get_users(db)
-#     return {"users": users}
+@router.get("/users")
+async def get_users(db: AsyncSession = Depends(get_db)):
+    users = await userdb.get_users(db)
+    return {"users": users}
+
+@router.get("/users/count")
+async def get_users_count(db: AsyncSession = Depends(get_db)):
+    users = await userdb.get_users(db)
+    return {"count": len(users)}
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):

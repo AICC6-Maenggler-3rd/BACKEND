@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoint import example, auth, map, place , accommodation
+from app.api.endpoint import example, auth, map, place , accommodation, manage
 
 api_router = APIRouter()
 
@@ -31,4 +31,10 @@ api_router.include_router(
   accommodation.router,
   prefix='/accommodation',
   tags=["accommodation"]
+)
+
+api_router.include_router(
+  manage.router,
+  prefix='/manage',
+  tags=["manage"]
 )

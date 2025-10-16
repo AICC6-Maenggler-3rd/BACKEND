@@ -52,3 +52,23 @@ async def get_place(place_id: int, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/insta-nicknames")
+async def get_insta_nicknames(db: AsyncSession = Depends(get_db)):
+    """인스타그램 닉네임 목록 조회"""
+    try:
+        nicknames = await placedb.get_insta_nicknames(db)
+        return {"insta_nicknames": nicknames}
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/by-instagram/{insta_nickname}")
+async def get_places_by_instagram(insta_nickname: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
+    """특정 인스타그램 닉네임으로 장소 조회"""
+    try:
+        place_list = await placedb.get_places_by_insta_nickname(db, insta_nickname, page, limit)
+        return place_list
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
