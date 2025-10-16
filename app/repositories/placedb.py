@@ -70,6 +70,17 @@ async def get_places_by_insta_nickname(db: AsyncSession, insta_nickname: str, pa
     ).order_by(Place.place_id.asc())
     return await paginate(db, search_query, page, limit)
 
+async def get_places_by_category(db: AsyncSession, category_id: int) -> list[Place]:
+    """특정 카테고리의 장소 조회 (many-to-many 관계)"""
+    from app.models.postgre_model import place_category_table
+    
+    result = await db.execute(
+        select(Place)
+        .join(place_category_table, Place.place_id == place_category_table.c.place_id)
+        .where(place_category_table.c.category_id == category_id)
+    )
+    return result.scalars().all()
+
 
 async def paginate(db: AsyncSession, query, page: int, limit: int):
     offset = (page - 1) * limit
