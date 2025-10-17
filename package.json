@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "update":"conda env update -f environment.yml --prune",
-    "dev":"conda activate inpick-fastapi && uvicorn app.main:app --reload"
+    "update": "conda env update -f environment.yml --prune",
+    "dev": "conda activate inpick-fastapi && uvicorn app.main:app --reload",
+    "kill-port": "npx kill-port 8000"
   }
 }
