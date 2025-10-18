@@ -101,6 +101,7 @@ class Itinerary(Base):
     itinerary_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("public.app_user.user_id"), nullable=True)
     relation = Column(String(10), nullable=True)
+    name = Column(String(100), nullable=True)
     start_at = Column(TIMESTAMP, nullable=False)
     end_at = Column(TIMESTAMP, nullable=False)
     start_location = Column(String(30), nullable=False)
