@@ -104,7 +104,7 @@ class Itinerary(Base):
     name = Column(String(100), nullable=True)
     start_at = Column(TIMESTAMP, nullable=False)
     end_at = Column(TIMESTAMP, nullable=False)
-    start_location = Column(String(30), nullable=False)
+    location = Column(String(30), nullable=False)
     theme = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
     deleted_at = Column(TIMESTAMP, nullable=True)

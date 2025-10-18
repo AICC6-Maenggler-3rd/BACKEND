@@ -10,7 +10,7 @@ import math
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
     itinerary = ItineraryResponse(
-        start_location=generate_itinerary_request.base_itinerary.start_location,
+        location=generate_itinerary_request.base_itinerary.location,
         theme=generate_itinerary_request.base_itinerary.theme,
         start_at=generate_itinerary_request.base_itinerary.start_at,
         end_at=generate_itinerary_request.base_itinerary.end_at,
