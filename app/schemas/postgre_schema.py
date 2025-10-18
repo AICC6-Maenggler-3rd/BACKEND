@@ -116,7 +116,7 @@ class ItinerarySchema(BaseModel):
     name: Optional[str] = None
     start_at: datetime
     end_at: datetime
-    start_location: Optional[str] = None
+    location: Optional[str] = None
     theme: Optional[str] = None
     created_at: datetime
     deleted_at: Optional[datetime] = None
@@ -154,7 +154,7 @@ class ItineraryItemResponse(BaseModel):
     data: Union[ItineraryPlaceItem, ItineraryAccommodationItem]
 
 class ItineraryResponse(BaseModel):
-    start_location: Optional[str] = None
+    location: Optional[str] = None
     theme: Optional[str] = None
     start_at: datetime
     end_at: datetime
@@ -182,7 +182,7 @@ class ItineraryItemCreate(BaseModel):
 
 
 class ItineraryCreate(BaseModel):
-    start_location: str
+    location: str
     theme: Optional[str] = None
     start_at: datetime
     end_at: datetime

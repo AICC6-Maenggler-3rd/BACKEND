@@ -117,7 +117,7 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
 
     # ItineraryResponse 반환
     return ItineraryResponse(
-        start_location=itinerary.start_location,
+        location=itinerary.location,
         theme=itinerary.theme,
         start_at=itinerary.start_at,
         end_at=itinerary.end_at,
@@ -131,7 +131,7 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
     itinerary = Itinerary(
         user_id=itinerary_data.user_id,
         relation=itinerary_data.relation,
-        start_location=itinerary_data.start_location,
+        location=itinerary_data.location,
         theme=itinerary_data.theme,
         start_at=itinerary_data.start_at,
         end_at=itinerary_data.end_at,
