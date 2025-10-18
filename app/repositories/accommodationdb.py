@@ -5,31 +5,6 @@ from app.models.postgre_model import Accommodation
 from datetime import datetime, timezone
 import math
 
-async def search_accommodation(db: AsyncSession, query: str, page: int, limit: int):
-    offset = (page - 1) * limit
-    sql = text("""
-                    SELECT
-                      accommodation_id, name, address, address_la, address_lo,
-                      type, phone, image_url, created_at, deleted_at, updated_at
-                    FROM accommodation
-                    WHERE name ILIKE '%' || :query || '%'
-                    ORDER BY accommodation_id ASC
-                    OFFSET :offset
-                    LIMIT :limit
-                """)
-
-    result = await db.execute(sql, {"query": query, "offset": offset, "limit": limit}).mappings().all()
-    total_count = await db.execute(
-        select(func.count()).select_from(Accommodation).where(
-            Accommodation.name.ilike(f"%{query}%")
-        )
-    )
-    page_count = (total_count.scalar_one() + limit - 1) // limit
-    return {
-        "data": result.scalars().all(),
-        "total_pages": page_count
-    }
-
 async def get_accommodation(db: AsyncSession, accommodation_id: int) -> Accommodation:
     result = await db.execute(
         select(Accommodation).where(
@@ -38,7 +13,15 @@ async def get_accommodation(db: AsyncSession, accommodation_id: int) -> Accommod
     )
     return result.scalar_one_or_none()
 
-async def get_accommodation_list(db: AsyncSession, page: int, limit: int, lat: float, lng: float, radius:float):
+async def get_accommodation_list(
+ db: AsyncSession,
+ page: int,
+ limit: int,
+ lat: float,
+ lng: float,
+ radius:float,
+ query: str,
+):
     """
     숙소 목록 조회
     params:
@@ -51,7 +34,7 @@ async def get_accommodation_list(db: AsyncSession, page: int, limit: int, lat: f
     offset = (page - 1) * limit
     if lat != -1 and lng != -1 and radius != -1:
         result = await db.execute(
-            get_accommodations_within_radius_query(lat, lng, radius).offset(offset).limit(limit)
+            get_accommodations_within_radius_query(lat, lng, radius, query).offset(offset).limit(limit)
         )
     else:
         result = await db.execute(
@@ -67,7 +50,7 @@ async def get_accommodation_list(db: AsyncSession, page: int, limit: int, lat: f
         "total_pages": page_count
     }
 
-def get_accommodations_within_radius_query(lat0: float, lng0: float, radius_m: float):
+def get_accommodations_within_radius_query(lat0: float, lng0: float, radius_m: float, query: str):
     """
     특정 좌표(lat0, lng0)로부터 radius_m 미터 이내의 Accommodation 조회
     """
@@ -98,10 +81,10 @@ def get_accommodations_within_radius_query(lat0: float, lng0: float, radius_m: f
     stmt = (
         select(Accommodation)
         .where(
+            func.lower(func.replace(Accommodation.name, ' ', '')).like(f"%{query}%"),
             Accommodation.address_la.between(lat_min, lat_max),
             Accommodation.address_lo.between(lng_min, lng_max),
             distance_expr <= radius_m
         )
     )
-
     return stmt
