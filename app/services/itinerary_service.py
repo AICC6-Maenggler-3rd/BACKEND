@@ -10,6 +10,7 @@ from typing import Optional, List, Union
 from datetime import datetime
 from app.repositories.placedb import get_place
 from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary
+from sqlalchemy import func
 
 
 async def generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
@@ -153,3 +154,44 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
     await db.refresh(itinerary)
     
     return await get_itinerary_response(db, itinerary.itinerary_id)
+
+async def get_itinerary(db: AsyncSession, itinerary_id: int) -> ItineraryResponse:
+    """
+    itinerary_id로 일정을 조회하고 ItineraryResponse 형태로 반환
+    """
+    return await get_itinerary_response(db, itinerary_id)
+
+async def get_user_itineraries(db: AsyncSession, user_id: int, page: int = 1, limit: int = 10) -> dict:
+    # 전체 일정 개수 조회
+    count_result = await db.execute(
+        select(func.count(Itinerary.itinerary_id))
+        .filter(Itinerary.user_id == user_id)
+        .filter(Itinerary.deleted_at.is_(None))
+    )
+    total_count = count_result.scalar()
+
+    offset = (page - 1) * limit
+
+    # 일정 리스트 조회
+    result = await db.execute(
+        select(Itinerary)
+        .filter(Itinerary.user_id == user_id)
+        .filter(Itinerary.deleted_at.is_(None))
+        .order_by(Itinerary.start_at.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+    itineraries = result.scalars().all()
+
+    # ItinerarySchema로 변환
+    itinerary_list = []
+    for itinerary in itineraries:
+        itinerary_schema = ItinerarySchema.model_validate(itinerary)
+        itinerary_list.append(itinerary_schema)
+    return {
+        "itineraries": itinerary_list,
+        "total_count": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit -1) //limit
+    }
