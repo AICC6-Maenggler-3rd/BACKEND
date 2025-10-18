@@ -180,7 +180,6 @@ class ItineraryItemCreate(BaseModel):
     #         raise ValueError("accommodation_id is required when item_type is 'accommodation'")
     #     return self
 
-
 class ItineraryCreate(BaseModel):
     location: str
     theme: Optional[str] = None
@@ -194,7 +193,7 @@ class ItineraryGenerate(BaseModel):
     base_itinerary: ItineraryCreate
     model_name: str
 
-# --------------일정 리스트 응답-----------
+# ----------- 일정 리스트 응답 -----------
 class ItineraryListResponse(BaseModel):
     itineraries: List[ItinerarySchema]
     total_count: int

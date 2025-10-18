@@ -124,6 +124,7 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
         relation=itinerary.relation,
         user_id=itinerary.user_id,
         items=items_response,
+        name=itinerary.name
     )
 
 
@@ -135,6 +136,7 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
         theme=itinerary_data.theme,
         start_at=itinerary_data.start_at,
         end_at=itinerary_data.end_at,
+        name=itinerary_data.name
     )
     db.add(itinerary)
     await db.flush()  # itinerary_id 확보
