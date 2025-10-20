@@ -88,3 +88,44 @@ async def soft_delete_user(db: AsyncSession, user_id: int) -> AppUser | None:
     updated_user = result.scalar_one_or_none()
 
     return updated_user
+
+# ✅ ID로 사용자 조회
+async def get_user_by_id(db: AsyncSession, user_id: int) -> AppUser:
+    result = await db.execute(
+        select(AppUser).where(AppUser.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+# ✅ 사용자 상태 업데이트
+async def update_user_status(db: AsyncSession, user_id: int, status: str) -> bool:
+    try:
+        await db.execute(
+            update(AppUser)
+            .where(AppUser.user_id == user_id)
+            .values(status=status)
+        )
+        await db.commit()
+        return True
+    except Exception as e:
+        await db.rollback()
+        print(f"사용자 상태 업데이트 실패: {e}")
+        return False
+
+# ✅ 사용자 완전 삭제
+async def delete_user(db: AsyncSession, user_id: int) -> bool:
+    try:
+        result = await db.execute(
+            select(AppUser).where(AppUser.user_id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            return False
+            
+        await db.delete(user)
+        await db.commit()
+        return True
+    except Exception as e:
+        await db.rollback()
+        print(f"사용자 삭제 실패: {e}")
+        return False
