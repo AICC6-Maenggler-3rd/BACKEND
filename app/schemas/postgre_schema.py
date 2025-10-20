@@ -189,6 +189,20 @@ class ItineraryCreate(BaseModel):
     user_id: Optional[int] = None
     items: List[ItineraryItemCreate]
 
+# 
+class ItineraryCreateRequest(BaseModel):
+    """
+    Args : 일정 name 포함 생성 요청
+    """
+    user_id: Optional[int] = None
+    relation: Optional[str] = None
+    start_at: datetime
+    end_at: datetime
+    location: str
+    theme: Optional[str] = None
+    name: str
+    items: List[ItineraryItemCreate]
+
 class ItineraryGenerate(BaseModel):
     base_itinerary: ItineraryCreate
     model_name: str

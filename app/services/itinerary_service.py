@@ -1,4 +1,4 @@
-from app.schemas.postgre_schema import ItineraryItemSchema, ItinerarySchema, PlaceSchema, AccommodationSchema, ItineraryResponse, ItineraryItemResponse, ItineraryPlaceItem, ItineraryAccommodationItem, ItineraryCreate, ItineraryGenerate
+from app.schemas.postgre_schema import ItineraryItemSchema, ItinerarySchema, PlaceSchema, AccommodationSchema, ItineraryResponse, ItineraryItemResponse, ItineraryPlaceItem, ItineraryAccommodationItem, ItineraryCreate, ItineraryGenerate, ItineraryCreateRequest
 from app.models.postgre_model import Itinerary, ItineraryItem, Place, Accommodation
 # from app.schemas.place_schema import PlaceSchema
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -153,6 +153,48 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
         db.add(item)
 
     await db.commit()
+    await db.refresh(itinerary)
+    
+    return await get_itinerary_response(db, itinerary.itinerary_id)
+
+async def create_itinerary_with_name(db:AsyncSession, itinerary_data:ItineraryCreateRequest):
+
+    print("[DEBUG] ITINERARY DATA WITH NAME: ", itinerary_data)
+
+    itinerary = Itinerary(
+        user_id=itinerary_data.user_id,
+        relation=itinerary_data.relation,
+        location=itinerary_data.location,
+        theme=itinerary_data.theme,
+        start_at=itinerary_data.start_at,
+        end_at=itinerary_data.end_at,
+        name=itinerary_data.name,
+        items=[ItineraryItem(
+            place_id=item_data.place_id,
+            accommodation_id=item_data.accommodation_id,
+            start_time=item_data.start_time,
+            end_time=item_data.end_time,
+            is_required=item_data.is_required,
+        ) for item_data in itinerary_data.items]
+    )
+    db.add(itinerary)
+    await db.flush()  # itinerary_id 확보
+
+    print("[DEBUG] ITINERARY DATA : ", itinerary_data)
+    print("[DEBUG] ITINERARY DATA : ", itinerary.itinerary_id)
+
+    for item_data in itinerary_data.items:
+        item = ItineraryItem(
+            itinerary_id=itinerary.itinerary_id,
+            place_id=item_data.place_id,
+            accommodation_id=item_data.accommodation_id,
+            start_time=item_data.start_time,
+            end_time=item_data.end_time,
+            is_required=item_data.is_required,
+        )
+        db.add(item)
+
+    # await db.commit()
     await db.refresh(itinerary)
     
     return await get_itinerary_response(db, itinerary.itinerary_id)
