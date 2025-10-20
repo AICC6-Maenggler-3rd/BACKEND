@@ -113,16 +113,17 @@ class ItinerarySchema(BaseModel):
     itinerary_id: int
     user_id: Optional[int] = None
     relation: Optional[str] = None
+    name: Optional[str] = None
     start_at: datetime
     end_at: datetime
-    start_location: str
+    location: Optional[str] = None
     theme: Optional[str] = None
     created_at: datetime
     deleted_at: Optional[datetime] = None
     updated_at: datetime
-    # relations
-    user: Optional[UserRef] = None
-    items: Optional[List[ItineraryItemSchema]] = None
+    # relations - 리스트 조회에서는 관계 속성 제외
+    # user: Optional[UserRef] = None
+    # items: Optional[List[ItineraryItemSchema]] = None
 
 # ---------- Association rows (필요 시) ----------
 class PlaceRegistrarLink(BaseModel):
@@ -153,13 +154,14 @@ class ItineraryItemResponse(BaseModel):
     data: Union[ItineraryPlaceItem, ItineraryAccommodationItem]
 
 class ItineraryResponse(BaseModel):
-    start_location: str
+    location: Optional[str] = None
     theme: Optional[str] = None
     start_at: datetime
     end_at: datetime
     relation: Optional[str] = None
     user_id: Optional[int] = None
     items: List[ItineraryItemResponse]
+    name: Optional[str] = None
 
 # ──────────── 일정 아이템 생성 모델 ────────────
 class ItineraryItemCreate(BaseModel):
@@ -178,9 +180,8 @@ class ItineraryItemCreate(BaseModel):
     #         raise ValueError("accommodation_id is required when item_type is 'accommodation'")
     #     return self
 
-
 class ItineraryCreate(BaseModel):
-    start_location: str
+    location: str
     theme: Optional[str] = None
     start_at: datetime
     end_at: datetime
@@ -191,3 +192,11 @@ class ItineraryCreate(BaseModel):
 class ItineraryGenerate(BaseModel):
     base_itinerary: ItineraryCreate
     model_name: str
+
+# ----------- 일정 리스트 응답 -----------
+class ItineraryListResponse(BaseModel):
+    itineraries: List[ItinerarySchema]
+    total_count: int
+    page: int
+    limit: int
+    total_pages: int

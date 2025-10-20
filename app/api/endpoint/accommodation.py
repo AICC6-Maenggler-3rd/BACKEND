@@ -28,19 +28,10 @@ class AccommodationUpdate(BaseModel):
 
 router = APIRouter()
 
-@router.get("/search")
-async def search_accommodation(query: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)):
-    try:
-        accommodation_list = await accommodationdb.search_accommodation(db, query, page, limit)
-        return accommodation_list
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.get("/list")
-async def get_accommodation_list(page: int = 1, limit: int = 30, lat: float = -1, lng: float = -1, radius: float = -1, db: AsyncSession = Depends(get_db)):
+async def get_accommodation_list(page: int = 1, limit: int = 30, lat: float = -1, lng: float = -1, radius: float = -1, query: str = "", db: AsyncSession = Depends(get_db)):
     try:
-        accommodation_list = await accommodationdb.get_accommodation_list(db, page, limit, lat, lng, radius)
+        accommodation_list = await accommodationdb.get_accommodation_list(db, page, limit, lat, lng, radius, query)
         return accommodation_list
     except Exception as e:
         print(e)
