@@ -47,7 +47,41 @@ async def get_sns_accounts(db: AsyncSession = Depends(get_db)):
     """SNS 계정 관리 - 인스타그램 닉네임 목록 조회"""
     try:
         nicknames = await placedb.get_insta_nicknames(db)
-        return {"insta_nicknames": nicknames, "total_count": len(nicknames)}
+        
+        # 전체 장소 수 조회
+        all_places = await placedb.get_places(db)
+        total_places_count = len(all_places)
+        
+        # 각 계정의 상세 정보 조회
+        accounts_with_details = []
+        sns_places_count = 0
+        for nickname in nicknames:
+            places = await placedb.get_places_by_insta_nickname(db, nickname, 1, 1000)
+            
+            # 상태 확인 (첫 번째 장소의 deleted_at 기준)
+            is_active = True
+            last_activity = None
+            if places.places:
+                first_place = places.places[0]
+                is_active = first_place.deleted_at is None
+                last_activity = first_place.updated_at.isoformat() if first_place.updated_at else None
+            
+            account_places_count = len(places.places)
+            sns_places_count += account_places_count
+            
+            accounts_with_details.append({
+                "nickname": nickname,
+                "places_count": account_places_count,
+                "status": "active" if is_active else "inactive",
+                "last_activity": last_activity
+            })
+        
+        return {
+            "accounts": accounts_with_details,
+            "total_count": len(accounts_with_details),
+            "total_places_count": total_places_count,
+            "sns_places_count": sns_places_count
+        }
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -86,39 +120,58 @@ async def get_sns_accounts_stats(db: AsyncSession = Depends(get_db)):
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/places/popularity")
-async def get_places_popularity(db: AsyncSession = Depends(get_db)):
-    """장소 인기도 분석 - 방문 횟수 기준 TOP 장소"""
+@router.patch("/sns-accounts/{insta_nickname}/status")
+async def toggle_sns_account_status(insta_nickname: str, db: AsyncSession = Depends(get_db)):
+    """SNS 계정 상태 변경 (활성화/비활성화)"""
     try:
-        print("장소 인기도 API 호출됨")
-        places = await placedb.get_places(db)
-        print(f"조회된 장소 수: {len(places)}")
+        # 해당 닉네임의 장소들 조회
+        places = await placedb.get_places_by_insta_nickname(db, insta_nickname, 1, 1000)
         
-        # count 기준으로 정렬하여 인기 장소 추출
-        popular_places = sorted(places, key=lambda x: x.count, reverse=True)[:10]
-        print(f"인기 장소 수: {len(popular_places)}")
+        if not places.places:
+            raise HTTPException(status_code=404, detail="해당 SNS 계정의 장소를 찾을 수 없습니다.")
         
-        # 차트용 데이터 포맷
-        chart_data = []
-        for place in popular_places:
-            chart_data.append({
-                "place_id": place.place_id,
-                "name": place.name,
-                "count": place.count,
-                "address": place.address,
-                "type": place.type,
-                "insta_nickname": place.insta_nickname
-            })
+        # 현재 상태 확인 (첫 번째 장소의 상태를 기준으로 함)
+        # 실제로는 별도의 SNS 계정 상태 테이블이 필요하지만, 
+        # 현재는 장소의 deleted_at 필드를 이용해 상태 관리
+        first_place = places.places[0]
+        is_active = first_place.deleted_at is None
         
-        result = {
-            "popular_places": chart_data,
-            "total_places": len(places)
+        # 상태 변경 (모든 관련 장소의 상태를 변경)
+        new_status = "inactive" if is_active else "active"
+        
+        # 장소들의 상태 업데이트
+        for place in places.places:
+            if new_status == "inactive":
+                # 비활성화: deleted_at 설정
+                await db.execute(
+                    update(Place)
+                    .where(Place.place_id == place.place_id)
+                    .values(deleted_at=datetime.now(timezone.utc))
+                )
+            else:
+                # 활성화: deleted_at 제거
+                await db.execute(
+                    update(Place)
+                    .where(Place.place_id == place.place_id)
+                    .values(deleted_at=None)
+                )
+        
+        await db.commit()
+        
+        status_text = "활성화" if new_status == "active" else "비활성화"
+        return {
+            "message": f"SNS 계정 '{insta_nickname}'이 성공적으로 {status_text}되었습니다.",
+            "nickname": insta_nickname,
+            "new_status": new_status,
+            "affected_places": len(places.places)
         }
-        print(f"반환할 데이터: {result}")
-        return result
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"장소 인기도 API 에러: {e}")
+        print(f"SNS 계정 상태 변경 API 에러: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @router.get("/places/category-stats")
 async def get_places_category_stats(db: AsyncSession = Depends(get_db)):
@@ -320,11 +373,12 @@ async def create_category(category_data: CategoryBase, db: AsyncSession = Depend
             raise HTTPException(status_code=400, detail="이미 존재하는 카테고리명입니다.")
         
         # 새 카테고리 생성
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
         new_category = Category(
             name=category_data.name,
-            status=category_data.status,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
+            status="active",  # 항상 활성으로 생성
+            created_at=current_time,
+            updated_at=current_time
         )
         
         db.add(new_category)
@@ -370,13 +424,14 @@ async def update_category(category_id: int, category_data: CategoryBase, db: Asy
             raise HTTPException(status_code=400, detail="이미 존재하는 카테고리명입니다.")
         
         # 카테고리 업데이트
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
         await db.execute(
             update(Category)
             .where(Category.category_id == category_id)
             .values(
                 name=category_data.name,
-                status=category_data.status,
-                updated_at=datetime.now(timezone.utc)
+                status="active",  # 항상 활성으로 유지
+                updated_at=current_time
             )
         )
         await db.commit()
@@ -388,39 +443,6 @@ async def update_category(category_id: int, category_data: CategoryBase, db: Asy
         print(f"카테고리 수정 API 에러: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/categories/{category_id}/status")
-async def toggle_category_status(category_id: int, db: AsyncSession = Depends(get_db)):
-    """카테고리 상태 변경 (활성화/비활성화)"""
-    try:
-        # 카테고리 존재 여부 확인
-        category = await db.execute(
-            select(Category).where(Category.category_id == category_id)
-        )
-        category = category.scalar_one_or_none()
-        if not category:
-            raise HTTPException(status_code=404, detail="카테고리를 찾을 수 없습니다.")
-        
-        # 현재 상태에 따라 반대 상태로 변경
-        new_status = "active" if category.status == "inactive" else "inactive"
-        
-        # 상태 업데이트
-        await db.execute(
-            update(Category)
-            .where(Category.category_id == category_id)
-            .values(
-                status=new_status,
-                updated_at=datetime.now(timezone.utc)
-            )
-        )
-        await db.commit()
-        
-        status_text = "활성화" if new_status == "active" else "비활성화"
-        return {"message": f"카테고리가 성공적으로 {status_text}되었습니다.", "new_status": new_status}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"카테고리 상태 변경 API 에러: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/categories/{category_id}")
 async def delete_category(category_id: int, db: AsyncSession = Depends(get_db)):

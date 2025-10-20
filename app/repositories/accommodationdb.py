@@ -1,9 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import update, func , text
+from sqlalchemy import update, func, text, delete
 from app.models.postgre_model import Accommodation
 from datetime import datetime, timezone
 import math
+from typing import Optional
+from pydantic import BaseModel
 
 async def search_accommodation(db: AsyncSession, query: str, page: int, limit: int):
     offset = (page - 1) * limit
@@ -25,8 +27,12 @@ async def search_accommodation(db: AsyncSession, query: str, page: int, limit: i
         )
     )
     page_count = (total_count.scalar_one() + limit - 1) // limit
+    
+    # 결과를 딕셔너리 리스트로 변환
+    data = [dict(row) for row in result]
+    
     return {
-        "data": result.scalars().all(),
+        "data": data,
         "total_pages": page_count
     }
 
@@ -105,3 +111,92 @@ def get_accommodations_within_radius_query(lat0: float, lng0: float, radius_m: f
     )
 
     return stmt
+
+async def create_accommodation(db: AsyncSession, accommodation_data: BaseModel) -> Accommodation:
+    """
+    새로운 숙소 생성
+    """
+    accommodation = Accommodation(
+        name=accommodation_data.name,
+        address=accommodation_data.address,
+        address_la=accommodation_data.address_la,
+        address_lo=accommodation_data.address_lo,
+        type=accommodation_data.type,
+        phone=accommodation_data.phone,
+        image_url=accommodation_data.image_url,
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    
+    db.add(accommodation)
+    await db.commit()
+    await db.refresh(accommodation)
+    return accommodation
+
+async def update_accommodation(db: AsyncSession, accommodation_id: int, accommodation_data: BaseModel) -> Optional[Accommodation]:
+    """
+    숙소 정보 수정
+    """
+    print(f"update_accommodation 호출 - ID: {accommodation_id}")
+    
+    # 먼저 숙소가 존재하는지 확인
+    result = await db.execute(
+        select(Accommodation).where(Accommodation.accommodation_id == accommodation_id)
+    )
+    accommodation = result.scalar_one_or_none()
+    
+    if not accommodation:
+        print(f"숙소를 찾을 수 없음 - ID: {accommodation_id}")
+        return None
+    
+    # 업데이트할 필드만 수정
+    update_data = accommodation_data.model_dump(exclude_unset=True)
+    print(f"업데이트 데이터: {update_data}")
+    
+    if update_data:
+        update_data['updated_at'] = datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        await db.execute(
+            update(Accommodation)
+            .where(Accommodation.accommodation_id == accommodation_id)
+            .values(**update_data)
+        )
+        await db.commit()
+        print(f"데이터베이스 업데이트 완료 - ID: {accommodation_id}")
+        
+        # 업데이트된 숙소 정보 조회
+        result = await db.execute(
+            select(Accommodation).where(Accommodation.accommodation_id == accommodation_id)
+        )
+        updated_accommodation = result.scalar_one_or_none()
+        print(f"업데이트된 숙소 정보: {updated_accommodation}")
+        return updated_accommodation
+    
+    print(f"업데이트할 데이터가 없음 - ID: {accommodation_id}")
+    return accommodation
+
+async def delete_accommodation(db: AsyncSession, accommodation_id: int) -> bool:
+    """
+    숙소 삭제 (soft delete)
+    """
+    # 먼저 숙소가 존재하는지 확인
+    result = await db.execute(
+        select(Accommodation).where(Accommodation.accommodation_id == accommodation_id)
+    )
+    accommodation = result.scalar_one_or_none()
+    
+    if not accommodation:
+        return False
+    
+    # soft delete (deleted_at 필드에 현재 시간 설정)
+    await db.execute(
+        update(Accommodation)
+        .where(Accommodation.accommodation_id == accommodation_id)
+        .values(
+            deleted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            updated_at=datetime.now(timezone.utc).replace(tzinfo=None)
+        )
+    )
+    await db.commit()
+    
+    return True

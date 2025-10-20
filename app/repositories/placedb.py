@@ -87,15 +87,29 @@ async def get_places_by_category(db: AsyncSession, category_id: int) -> list[Pla
     )
     return result.scalars().all()
 
+async def get_place_list_by_category(db: AsyncSession, category_id: int, page: int, limit: int) -> PlaceListResponse:
+    """카테고리별 장소 목록 조회 (페이지네이션 지원)"""
+    from app.models.postgre_model import place_category_table
+    
+    search_query = (
+        select(Place)
+        .join(place_category_table, Place.place_id == place_category_table.c.place_id)
+        .where(place_category_table.c.category_id == category_id)
+        .order_by(Place.place_id.asc())
+    )
+    return await paginate(db, search_query, page, limit)
+
 
 async def paginate(db: AsyncSession, query, page: int, limit: int):
     offset = (page - 1) * limit
     result = await db.execute(query.offset(offset).limit(limit))
-    total_count = await db.execute(select(func.count()).select_from(query))
-    page_count = (total_count.scalar_one() + limit - 1) // limit
+    total_count_result = await db.execute(select(func.count()).select_from(query))
+    total_count = total_count_result.scalar_one()
+    page_count = (total_count + limit - 1) // limit
     return PlaceListResponse(
         places=[PlaceSchema.model_validate(place, from_attributes=True) for place in result.scalars().all()],
-        total_pages=page_count
+        total_pages=page_count,
+        total_count=total_count
     )
 def get_place_list_by_address_query(address: str):
     return select(Place).where(
