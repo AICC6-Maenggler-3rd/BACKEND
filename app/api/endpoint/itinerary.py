@@ -33,13 +33,6 @@ async def get_itinerary(itinerary_id: int, db: AsyncSession = Depends(get_db)) -
         print("❌ [ERROR] get_itinerary:", e)
         raise HTTPException(status_code=400, detail=f"Itinerary {itinerary_id} not found")
 
-@router.post("/create")
-async def create_itinerary(req: Request, db: AsyncSession = Depends(get_db)) -> ItineraryResponse:
-    body = await req.json()
-    create_itinerary_request = ItineraryCreate(**body)
-    itinerary = await itinerary_service.create_itinerary(db, create_itinerary_request)
-    return itinerary
-
 @router.get("/user/{user_id}")
 async def get_user_itineraries(
     user_id: int,
@@ -78,7 +71,7 @@ async def get_my_itineraries(
 async def create_itinerary_with_name(req: Request, db: AsyncSession = Depends(get_db)) -> ItineraryCreateRequest:
     body = await req.json()
     create_itinerary_request = ItineraryCreateRequest(**body)
-    print("[DEBUG] CREATE ITINERARY REQUEST WITH NAME: ", create_itinerary_request)
+    print("[DEBUG] CREATE ITINERARY REQUEST WITH NAME: ")
     try:
         itinerary = await itinerary_service.create_itinerary_with_name(db, create_itinerary_request)
         return itinerary

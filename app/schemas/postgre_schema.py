@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, List, Union
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 # ---------- Reference DTOs (순환 방지용 요약) ----------
 class UserRef(BaseModel):
@@ -95,7 +95,7 @@ class ItineraryItemSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     item_id: int
     itinerary_id: int
-    place_id: int
+    place_id: Optional[int] = None
     accommodation_id: Optional[int] = None
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -169,8 +169,20 @@ class ItineraryItemCreate(BaseModel):
     place_id: Optional[int] = None
     accommodation_id: Optional[int] = None
     start_time: datetime
-    end_time: Optional[datetime] = None
+    end_time: Optional[datetime]
     is_required: bool
+
+    @model_validator(mode="after")
+    def normalize_zero_ids(self):
+        # 0을 None으로 정규화
+        if self.place_id == 0:
+            self.place_id = None
+        if self.accommodation_id == 0:
+            self.accommodation_id = None
+        # 최소 하나는 존재해야 함
+        if self.place_id is None and self.accommodation_id is None:
+            raise ValueError("Either place_id or accommodation_id must be provided")
+        return self
 
     # @model_validator(mode="after")
     # def validate_item(self):

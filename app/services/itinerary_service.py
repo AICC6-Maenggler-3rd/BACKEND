@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 from time import sleep
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
-from datetime import datetime
+from datetime import datetime, timezone
 from app.repositories.placedb import get_place
 from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary
 from sqlalchemy import func
@@ -159,45 +159,47 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
 
 async def create_itinerary_with_name(db:AsyncSession, itinerary_data:ItineraryCreateRequest):
 
-    print("[DEBUG] ITINERARY DATA WITH NAME: ", itinerary_data)
+    print("[DEBUG] ITINERARY DATA WITH NAME: ")
+
+    def to_naive_utc(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            # Already naive; treat as UTC-naive
+            return dt
+        # Convert to UTC then drop tzinfo to store into TIMESTAMP WITHOUT TIME ZONE
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
     itinerary = Itinerary(
         user_id=itinerary_data.user_id,
         relation=itinerary_data.relation,
         location=itinerary_data.location,
         theme=itinerary_data.theme,
-        start_at=itinerary_data.start_at,
-        end_at=itinerary_data.end_at,
+        start_at=to_naive_utc(itinerary_data.start_at),
+        end_at=to_naive_utc(itinerary_data.end_at),
         name=itinerary_data.name,
-        items=[ItineraryItem(
-            place_id=item_data.place_id,
-            accommodation_id=item_data.accommodation_id,
-            start_time=item_data.start_time,
-            end_time=item_data.end_time,
-            is_required=item_data.is_required,
-        ) for item_data in itinerary_data.items]
     )
     db.add(itinerary)
     await db.flush()  # itinerary_id 확보
-
-    print("[DEBUG] ITINERARY DATA : ", itinerary_data)
+    
     print("[DEBUG] ITINERARY DATA : ", itinerary.itinerary_id)
 
     for item_data in itinerary_data.items:
         item = ItineraryItem(
             itinerary_id=itinerary.itinerary_id,
-            place_id=item_data.place_id,
-            accommodation_id=item_data.accommodation_id,
-            start_time=item_data.start_time,
-            end_time=item_data.end_time,
+            place_id=item_data.place_id if item_data.place_id != 0 else None,
+            accommodation_id=item_data.accommodation_id if item_data.accommodation_id != 0 else None,
+            start_time=to_naive_utc(item_data.start_time),
+            end_time=to_naive_utc(item_data.end_time),
             is_required=item_data.is_required,
         )
         db.add(item)
 
-    # await db.commit()
+    await db.commit()
     await db.refresh(itinerary)
     
-    return await get_itinerary_response(db, itinerary.itinerary_id)
+    # 생성된 일정 데이터를 반환
+    return itinerary_data
 
 async def get_itinerary(db: AsyncSession, itinerary_id: int) -> ItineraryResponse:
     """
