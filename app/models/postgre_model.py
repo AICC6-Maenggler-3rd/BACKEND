@@ -101,7 +101,6 @@ class Itinerary(Base):
     itinerary_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("public.app_user.user_id"), nullable=True)
     relation = Column(String(10), nullable=True)
-    name = Column(String(100), nullable=True)
     start_at = Column(TIMESTAMP, nullable=False)
     end_at = Column(TIMESTAMP, nullable=False)
     location = Column(String(30), nullable=False)
@@ -109,6 +108,7 @@ class Itinerary(Base):
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
     deleted_at = Column(TIMESTAMP, nullable=True)
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())
+    name = Column(String(100), nullable=True)
 
     user = relationship("AppUser", back_populates="itineraries")
     items = relationship("ItineraryItem", back_populates="itinerary")
@@ -120,9 +120,9 @@ class ItineraryItem(Base):
 
     item_id = Column(Integer, primary_key=True, autoincrement=True)
     itinerary_id = Column(Integer, ForeignKey("public.itinerary.itinerary_id"), nullable=False)
-    place_id = Column(Integer, ForeignKey("public.place.place_id"), nullable=False)
+    place_id = Column(Integer, ForeignKey("public.place.place_id"), nullable=True)
     accommodation_id = Column(Integer, ForeignKey("public.accommodation.accommodation_id"), nullable=True)
-    start_time = Column(TIMESTAMP, nullable=False)
+    start_time = Column(TIMESTAMP, nullable=True)
     end_time = Column(TIMESTAMP, nullable=True)
     is_required = Column(Boolean, nullable=False, default=False)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.current_timestamp())

@@ -3,8 +3,8 @@ from app.services import generate_itinerary_service
 from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Request
+from app.schemas.postgre_schema import ItineraryCreate, ItineraryGenerate, ItineraryResponse, ItineraryListResponse, ItinerarySchema, ItineraryCreateRequest
 from typing import List
-from app.schemas.postgre_schema import ItineraryCreate, ItineraryGenerate, ItineraryResponse, ItineraryListResponse, ItinerarySchema
 from sqlalchemy import func, select
 from app.models.postgre_model import Itinerary
 from app.auth.dependencies import get_current_user
@@ -39,13 +39,6 @@ async def get_itinerary(itinerary_id: int, db: AsyncSession = Depends(get_db)) -
         print("❌ [ERROR] get_itinerary:", e)
         raise HTTPException(status_code=400, detail=f"Itinerary {itinerary_id} not found")
 
-@router.post("/create")
-async def create_itinerary(req: Request, db: AsyncSession = Depends(get_db)) -> ItineraryResponse:
-    body = await req.json()
-    create_itinerary_request = ItineraryCreate(**body)
-    itinerary = await itinerary_service.create_itinerary(db, create_itinerary_request)
-    return itinerary
-
 @router.get("/user/{user_id}")
 async def get_user_itineraries(
     user_id: int,
@@ -78,4 +71,16 @@ async def get_my_itineraries(
         return ItineraryListResponse(**result)
     except Exception as e:
         print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/createItinerary")
+async def create_itinerary_with_name(req: Request, db: AsyncSession = Depends(get_db)) -> ItineraryCreateRequest:
+    body = await req.json()
+    create_itinerary_request = ItineraryCreateRequest(**body)
+    print("[DEBUG] CREATE ITINERARY REQUEST WITH NAME: ")
+    try:
+        itinerary = await itinerary_service.create_itinerary_with_name(db, create_itinerary_request)
+        return itinerary
+    except Exception as e:
+        print("[ERROR] create_itinerary_with_name : ", e)
         raise HTTPException(status_code=500, detail=str(e))
