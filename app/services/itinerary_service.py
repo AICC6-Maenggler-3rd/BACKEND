@@ -7,10 +7,17 @@ from sqlalchemy.orm import joinedload
 from time import sleep
 from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.repositories.placedb import get_place
 from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary
 from sqlalchemy import func
+
+
+def add_korean_timezone(dt: datetime) -> datetime:
+    """UTC 시간에 9시간을 더해서 한국 시간으로 변환"""
+    if dt is None:
+        return None
+    return dt + timedelta(hours=9)
 
 
 async def generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
@@ -85,8 +92,8 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
                 itinerary_id=item.itinerary_id,
                 place_id=item.place_id,
                 accommodation_id=item.accommodation_id,
-                start_time=item.start_time,
-                end_time=item.end_time,
+                start_time=add_korean_timezone(item.start_time),
+                end_time=add_korean_timezone(item.end_time),
                 is_required=item.is_required,
                 created_at=item.created_at,
                 info=acc_schema,
@@ -106,8 +113,8 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
                 itinerary_id=item.itinerary_id,
                 place_id=item.place_id,
                 accommodation_id=None,
-                start_time=item.start_time,
-                end_time=item.end_time,
+                start_time=add_korean_timezone(item.start_time),
+                end_time=add_korean_timezone(item.end_time),
                 is_required=item.is_required,
                 created_at=item.created_at,
                 info=place_schema,
@@ -120,8 +127,8 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
     return ItineraryResponse(
         location=itinerary.location,
         theme=itinerary.theme,
-        start_at=itinerary.start_at,
-        end_at=itinerary.end_at,
+        start_at=add_korean_timezone(itinerary.start_at),
+        end_at=add_korean_timezone(itinerary.end_at),
         relation=itinerary.relation,
         user_id=itinerary.user_id,
         items=items_response,
@@ -281,8 +288,8 @@ async def get_itinerary_detail_with_metadata(db: AsyncSession, itinerary_id: int
                     itinerary_id=item.itinerary_id,
                     place_id=item.place_id,
                     accommodation_id=item.accommodation_id,
-                    start_time=item.start_time,
-                    end_time=item.end_time,
+                    start_time=add_korean_timezone(item.start_time),
+                    end_time=add_korean_timezone(item.end_time),
                     is_required=item.is_required,
                     created_at=item.created_at,
                     info=acc_schema,
@@ -300,8 +307,8 @@ async def get_itinerary_detail_with_metadata(db: AsyncSession, itinerary_id: int
                         itinerary_id=item.itinerary_id,
                         place_id=item.place_id,
                         accommodation_id=None,
-                        start_time=item.start_time,
-                        end_time=item.end_time,
+                        start_time=add_korean_timezone(item.start_time),
+                        end_time=add_korean_timezone(item.end_time),
                         is_required=item.is_required,
                         created_at=item.created_at,
                         info=None,  # place 정보가 없으므로 None
@@ -316,8 +323,8 @@ async def get_itinerary_detail_with_metadata(db: AsyncSession, itinerary_id: int
                         itinerary_id=item.itinerary_id,
                         place_id=item.place_id,
                         accommodation_id=None,
-                        start_time=item.start_time,
-                        end_time=item.end_time,
+                        start_time=add_korean_timezone(item.start_time),
+                        end_time=add_korean_timezone(item.end_time),
                         is_required=item.is_required,
                         created_at=item.created_at,
                         info=place_schema,
@@ -339,8 +346,8 @@ async def get_itinerary_detail_with_metadata(db: AsyncSession, itinerary_id: int
             "itinerary": ItineraryResponse(
                 location=itinerary.location,
                 theme=itinerary.theme,
-                start_at=itinerary.start_at,
-                end_at=itinerary.end_at,
+                start_at=add_korean_timezone(itinerary.start_at),
+                end_at=add_korean_timezone(itinerary.end_at),
                 relation=itinerary.relation,
                 user_id=itinerary.user_id,
                 items=items_response,
