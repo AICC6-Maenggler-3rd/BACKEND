@@ -99,6 +99,7 @@ def calculate_day_index(start_at: datetime, date: datetime) -> int:
 async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
   # 기존에 있는 장소는 유지하고, 하루에 장소가 3개가 되도록 랜덤으로 장소를 추가
   itinerary = await none_generate_itinerary(db, generate_itinerary_request)
+  visit_place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place"]
   CKPT = POI_MODEL_PATH
   PLACES = PLACES_PATH
   duration = calculate_duration(generate_itinerary_request.base_itinerary.start_at, generate_itinerary_request.base_itinerary.end_at)
@@ -118,7 +119,7 @@ async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_reques
     if themes is None:
       themes = ["여행"]
     try:
-      recs = await recommend_next(ckpt_path=CKPT, places_path=PLACES, prefix_place_ids=place_ids, region_lat=region.address_la, region_lng=region.address_lo, companions=companions, themes=themes)
+      recs = await recommend_next(ckpt_path=CKPT, places_path=PLACES, prefix_place_ids=place_ids, region_lat=region.address_la, region_lng=region.address_lo, companions=companions, themes=themes, already_visited=visit_place_ids)
     except Exception as e:
       print("error", e)
       continue
@@ -139,5 +140,6 @@ async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_reques
         created_at=datetime.now(),
         info=place_schema,
       )))
+      visit_place_ids.append(rec["place_id"])
 
   return itinerary
