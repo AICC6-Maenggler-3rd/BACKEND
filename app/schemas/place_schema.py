@@ -32,3 +32,4 @@ class PlaceSchema(PlaceBase):
 class PlaceListResponse(BaseModel):
     places: list[PlaceSchema]
     total_pages: int
+    total_count: int

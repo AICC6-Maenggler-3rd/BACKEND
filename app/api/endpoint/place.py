@@ -43,6 +43,16 @@ async def get_place_list(page: int = 1, limit: int = 30, db: AsyncSession = Depe
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/list/category")
+async def get_place_list_by_category(category_id: int, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
+    """카테고리별 장소 목록 조회"""
+    try:
+        place_list = await placedb.get_place_list_by_category(db, category_id, page, limit)
+        return place_list
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/{place_id}")
 async def get_place(place_id: int, db: AsyncSession = Depends(get_db)):
