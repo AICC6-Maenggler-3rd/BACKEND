@@ -4,8 +4,8 @@
 
 - **개념**: 장소(POI)의 속성(feature)과 사용자의 선호 속성(feature)을 직접 비교하여 유사도가 높은 항목 추천
 - **활용 방식**
-  - 장소별 속성: `type`, `theme`, `category`, `평균 체류시간`, `위치좌표(lat, lng)`
-  - 사용자 입력: `themes`, `companions`, `travel_style`
+  - 장소별 속성: `type`, `theme`, `category`, `위치좌표(lat, lng)` ||
+  - 사용자 입력: `themes`, `구성원`, `지역`
   - 예: “힐링·자연 테마”를 선택한 사용자는 `자연`, `산`, `카페` 카테고리 장소를 높은 우선순위로 추천
 - **기술 요소**
   - TF-IDF 또는 Word2Vec 기반 카테고리 임베딩
