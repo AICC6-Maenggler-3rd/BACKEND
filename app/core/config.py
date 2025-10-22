@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    front_url: str = "http://localhost:5180"
     MONGO_URI: str
     MONGO_DB_NAME: str
     postgresql_url: str

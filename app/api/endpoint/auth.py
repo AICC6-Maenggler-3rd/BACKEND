@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Response, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
+from app.core.config import settings
 from app.services.session_service import create_session, delete_session, get_session
 from app.auth.dependencies import get_current_user
 from bson.objectid import ObjectId
@@ -43,7 +44,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
             session = await get_current_user(request, response)
             if session:
                 # 유효한 세션이면 바로 프론트로 리다이렉트
-                return RedirectResponse(url="http://localhost:5180/")
+                return RedirectResponse(url=settings.front_url)
         except HTTPException:
             # 세션 만료면 무시하고 새 로그인 진행
             pass
@@ -122,7 +123,7 @@ async def social_callback(provider: str, request: Request, response: Response, c
     )
     await create_activity_log(log)
 
-    redirect = RedirectResponse(url="http://localhost:5180/")
+    redirect = RedirectResponse(url=settings.front_url)
     redirect.set_cookie("session_id", session_id, httponly=True, max_age=1800, samesite="lax", secure=False)
     return redirect
 
