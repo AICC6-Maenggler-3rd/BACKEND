@@ -1,6 +1,12 @@
 from pydantic_settings import BaseSettings
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_DIR = BASE_DIR / "ml" / "artifacts"
+POI_MODEL_PATH = MODEL_DIR / "nextpoi_sasrec.pt"
+PLACES_PATH = MODEL_DIR / "places_with_ids.csv"
 class Settings(BaseSettings):
+    front_url: str = "http://localhost:5180"
     MONGO_URI: str
     MONGO_DB_NAME: str
     postgresql_url: str

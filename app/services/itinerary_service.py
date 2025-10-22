@@ -1,4 +1,4 @@
-from app.schemas.postgre_schema import ItineraryItemSchema, ItinerarySchema, PlaceSchema, AccommodationSchema, ItineraryResponse, ItineraryItemResponse, ItineraryPlaceItem, ItineraryAccommodationItem, ItineraryCreate, ItineraryGenerate, ItineraryCreateRequest
+from app.schemas.postgre_schema import ItineraryItemSchema, ItinerarySchema, PlaceSchema, AccommodationSchema, ItineraryResponse, ItineraryItemResponse, ItineraryPlaceItem, ItineraryAccommodationItem, ItineraryCreate, ItineraryGenerate
 from app.models.postgre_model import Itinerary, ItineraryItem, Place, Accommodation
 # from app.schemas.place_schema import PlaceSchema
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +9,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
 from datetime import datetime, timezone, timedelta
 from app.repositories.placedb import get_place
-from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary
+from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary, nextpoi_generate_itinerary
 from sqlalchemy import func
 
 
@@ -27,6 +27,8 @@ async def generate_itinerary(db: AsyncSession, generate_itinerary_request: Itine
         itinerary = await none_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "random":
         itinerary = await random_generate_itinerary(db, generate_itinerary_request)
+    elif generate_itinerary_request.model_name == "nextpoi":
+        itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
     else:
         raise ValueError(f"Invalid model name: {generate_itinerary_request.model_name}")
     return itinerary
@@ -54,6 +56,8 @@ async def get_itinerary_accommodations(db: AsyncSession, itinerary_items: List[I
         .filter(ItineraryItem.itinerary_id.in_(itinerary_items))
     )
     return result.scalars().all()
+
+
 
 async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> ItineraryResponse:
     """
@@ -104,9 +108,6 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
 
         # 장소 항목
         else:
-            if item.place is None:
-                print(f"[WARNING] Place data is None for item {item.item_id}")
-                continue
             place_schema = PlaceSchema.model_validate(item.place)
             item_data = ItineraryPlaceItem(
                 item_id=item.item_id,
@@ -165,51 +166,10 @@ async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
     
     return await get_itinerary_response(db, itinerary.itinerary_id)
 
-async def create_itinerary_with_name(db:AsyncSession, itinerary_data:ItineraryCreateRequest):
-
-    print("[DEBUG] ITINERARY DATA WITH NAME: ")
-
-    def to_naive_utc(dt: datetime | None) -> datetime | None:
-        if dt is None:
-            return None
-        if dt.tzinfo is None:
-            # Already naive; treat as UTC-naive
-            return dt
-        # Convert to UTC then drop tzinfo to store into TIMESTAMP WITHOUT TIME ZONE
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-
-    itinerary = Itinerary(
-        user_id=itinerary_data.user_id,
-        relation=itinerary_data.relation,
-        location=itinerary_data.location,
-        theme=itinerary_data.theme,
-        start_at=to_naive_utc(itinerary_data.start_at),
-        end_at=to_naive_utc(itinerary_data.end_at),
-        name=itinerary_data.name,
-    )
-    db.add(itinerary)
-    await db.flush()  # itinerary_id 확보
-    
-    print("[DEBUG] ITINERARY DATA : ", itinerary.itinerary_id)
-
-    for item_data in itinerary_data.items:
-        item = ItineraryItem(
-            itinerary_id=itinerary.itinerary_id,
-            place_id=item_data.place_id if item_data.place_id != 0 else None,
-            accommodation_id=item_data.accommodation_id if item_data.accommodation_id != 0 else None,
-            start_time=to_naive_utc(item_data.start_time),
-            end_time=to_naive_utc(item_data.end_time),
-            is_required=item_data.is_required,
-        )
-        db.add(item)
-
-    await db.commit()
-    await db.refresh(itinerary)
-    
-    # 생성된 일정 데이터를 반환
-    return itinerary_data
-
 async def get_itinerary(db: AsyncSession, itinerary_id: int) -> ItineraryResponse:
+    """
+    itinerary_id로 일정을 조회하고 ItineraryResponse 형태로 반환
+    """
     return await get_itinerary_response(db, itinerary_id)
 
 async def get_user_itineraries(db: AsyncSession, user_id: int, page: int = 1, limit: int = 10) -> dict:
@@ -228,7 +188,7 @@ async def get_user_itineraries(db: AsyncSession, user_id: int, page: int = 1, li
         select(Itinerary)
         .filter(Itinerary.user_id == user_id)
         .filter(Itinerary.deleted_at.is_(None))
-        .order_by(Itinerary.start_at.desc())
+        .order_by(Itinerary.start_at.asc())
         .offset(offset)
         .limit(limit)
     )
