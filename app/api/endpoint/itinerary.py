@@ -6,8 +6,13 @@ from app.schemas.postgre_schema import ItineraryCreate, ItineraryGenerate, Itine
 from sqlalchemy import func, select
 from app.models.postgre_model import Itinerary
 from app.auth.dependencies import get_current_user
-
+from app.services import generate_itinerary_service
+from typing import List
 router = APIRouter()
+
+@router.get("/models")
+async def get_model_list()-> List[str]:
+    return await generate_itinerary_service.get_generate_model_list()
 
 @router.post("/generate")
 async def generate_itinerary(req: Request, db: AsyncSession = Depends(get_db)) -> ItineraryResponse:
