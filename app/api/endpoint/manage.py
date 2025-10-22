@@ -6,7 +6,7 @@ from app.schemas.place_schema import PlaceListResponse
 from app.schemas.category_schema import CategorySchema, CategoryListResponse, CategoryBase
 from fastapi import HTTPException
 from sqlalchemy import select, update, delete
-from app.models.postgre_model import Category
+from app.models.postgre_model import Category, Place
 from datetime import datetime, timezone
 router = APIRouter()
 
@@ -56,7 +56,7 @@ async def get_sns_accounts(db: AsyncSession = Depends(get_db)):
         accounts_with_details = []
         sns_places_count = 0
         for nickname in nicknames:
-            places = await placedb.get_places_by_insta_nickname(db, nickname, 1, 1000)
+            places = await placedb.get_places_by_insta_nickname(db, nickname, 1, 100000)
             
             # 상태 확인 (첫 번째 장소의 deleted_at 기준)
             is_active = True
@@ -106,7 +106,7 @@ async def get_sns_accounts_stats(db: AsyncSession = Depends(get_db)):
         # 각 계정별 장소 수 계산
         account_stats = []
         for nickname in nicknames:
-            places = await placedb.get_places_by_insta_nickname(db, nickname, 1, 1000)  # 큰 limit으로 모든 장소 조회
+            places = await placedb.get_places_by_insta_nickname(db, nickname, 1, 100000)  # 모든 장소 조회
             account_stats.append({
                 "nickname": nickname,
                 "places_count": len(places.places)
@@ -120,56 +120,114 @@ async def get_sns_accounts_stats(db: AsyncSession = Depends(get_db)):
         print(e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/sns-accounts/{insta_nickname}/status")
-async def toggle_sns_account_status(insta_nickname: str, db: AsyncSession = Depends(get_db)):
-    """SNS 계정 상태 변경 (활성화/비활성화)"""
+@router.patch("/sns-accounts/{old_nickname}")
+async def update_sns_account(old_nickname: str, account_data: dict, db: AsyncSession = Depends(get_db)):
+    """SNS 계정 닉네임 수정 (병합 지원)"""
     try:
-        # 해당 닉네임의 장소들 조회
-        places = await placedb.get_places_by_insta_nickname(db, insta_nickname, 1, 1000)
+        new_nickname = account_data.get("nickname")
+        force_merge = account_data.get("force_merge", False)  # 병합 강제 옵션
+        if not new_nickname:
+            raise HTTPException(status_code=400, detail="새 닉네임은 필수입니다.")
         
-        if not places.places:
-            raise HTTPException(status_code=404, detail="해당 SNS 계정의 장소를 찾을 수 없습니다.")
+        print(f"[DEBUG] SNS 계정 수정 요청: '{old_nickname}' -> '{new_nickname}'")
         
-        # 현재 상태 확인 (첫 번째 장소의 상태를 기준으로 함)
-        # 실제로는 별도의 SNS 계정 상태 테이블이 필요하지만, 
-        # 현재는 장소의 deleted_at 필드를 이용해 상태 관리
-        first_place = places.places[0]
-        is_active = first_place.deleted_at is None
+        # 기존 계정 존재 확인 (모든 장소 조회 - 페이지네이션 제한 없음)
+        existing_places = await placedb.get_places_by_insta_nickname(db, old_nickname, 1, 100000)
+        if not existing_places.places:
+            raise HTTPException(status_code=404, detail="해당 SNS 계정을 찾을 수 없습니다.")
         
-        # 상태 변경 (모든 관련 장소의 상태를 변경)
-        new_status = "inactive" if is_active else "active"
+        print(f"[DEBUG] 기존 계정의 장소 수: {len(existing_places.places)}")
+        print(f"[WARNING] 1000개 이상의 장소가 있을 경우 이전에 일부만 업데이트되었을 수 있습니다.")
         
-        # 장소들의 상태 업데이트
-        for place in places.places:
-            if new_status == "inactive":
-                # 비활성화: deleted_at 설정
-                await db.execute(
-                    update(Place)
-                    .where(Place.place_id == place.place_id)
-                    .values(deleted_at=datetime.now(timezone.utc))
+        # 새 닉네임 중복 확인 (old_nickname과 다를 때만)
+        if old_nickname != new_nickname:
+            # 현재 수정하려는 장소들의 ID 목록
+            current_place_ids = [place.place_id for place in existing_places.places]
+            print(f"[DEBUG] 현재 계정의 장소 ID 목록: {current_place_ids}")
+            
+            # 새 닉네임으로 조회 (모든 장소)
+            duplicate_places = await placedb.get_places_by_insta_nickname(db, new_nickname, 1, 100000)
+            
+            print(f"[DEBUG] 새 닉네임으로 조회된 장소 수: {len(duplicate_places.places)}")
+            if duplicate_places.places:
+                duplicate_place_ids = [p.place_id for p in duplicate_places.places]
+                print(f"[DEBUG] 새 닉네임의 장소 ID 목록: {duplicate_place_ids}")
+            
+            # 현재 수정하려는 장소들을 제외하고 중복 확인
+            other_places = [p for p in duplicate_places.places if p.place_id not in current_place_ids]
+            
+            print(f"[DEBUG] 다른 장소 수 (현재 계정 제외): {len(other_places)}")
+            if other_places and not force_merge:
+                other_place_ids = [p.place_id for p in other_places]
+                other_place_names = [p.name for p in other_places[:3]]  # 처음 3개만
+                print(f"[DEBUG] 다른 장소 ID 목록: {other_place_ids}")
+                print(f"[DEBUG] 다른 장소 이름 (샘플): {other_place_names}")
+                
+                detail_msg = f"'{new_nickname}' 닉네임은 이미 다른 {len(other_places)}개의 장소에서 사용 중입니다. "
+                detail_msg += f"(예: {', '.join(other_place_names[:2])}) "
+                detail_msg += "계정을 병합하려면 병합 옵션을 사용하세요."
+                raise HTTPException(status_code=400, detail=detail_msg)
+            elif other_places and force_merge:
+                print(f"[INFO] 병합 모드: {len(other_places)}개의 기존 장소와 {len(existing_places.places)}개의 새 장소를 병합합니다.")
+        
+        # 모든 관련 장소의 닉네임 업데이트
+        for place in existing_places.places:
+            await db.execute(
+                update(Place)
+                .where(Place.place_id == place.place_id)
+                .values(
+                    insta_nickname=new_nickname,
+                    updated_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
-            else:
-                # 활성화: deleted_at 제거
-                await db.execute(
-                    update(Place)
-                    .where(Place.place_id == place.place_id)
-                    .values(deleted_at=None)
-                )
+            )
         
         await db.commit()
         
-        status_text = "활성화" if new_status == "active" else "비활성화"
+        print(f"[DEBUG] SNS 계정 수정 완료: {len(existing_places.places)}개 장소 업데이트")
+        
         return {
-            "message": f"SNS 계정 '{insta_nickname}'이 성공적으로 {status_text}되었습니다.",
+            "message": f"SNS 계정이 '{old_nickname}'에서 '{new_nickname}'으로 성공적으로 수정되었습니다.",
+            "old_nickname": old_nickname,
+            "new_nickname": new_nickname,
+            "affected_places": len(existing_places.places)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"SNS 계정 수정 API 에러: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/sns-accounts/{insta_nickname}")
+async def delete_sns_account(insta_nickname: str, db: AsyncSession = Depends(get_db)):
+    """SNS 계정 삭제"""
+    try:
+        # 해당 닉네임의 장소들 조회 (모든 장소)
+        places = await placedb.get_places_by_insta_nickname(db, insta_nickname, 1, 100000)
+        
+        if not places.places:
+            raise HTTPException(status_code=404, detail="해당 SNS 계정을 찾을 수 없습니다.")
+        
+        # 모든 관련 장소 삭제 (soft delete)
+        for place in places.places:
+            await db.execute(
+                update(Place)
+                .where(Place.place_id == place.place_id)
+                .values(deleted_at=datetime.now(timezone.utc).replace(tzinfo=None))
+            )
+        
+        await db.commit()
+        
+        return {
+            "message": f"SNS 계정 '{insta_nickname}'이 성공적으로 삭제되었습니다.",
             "nickname": insta_nickname,
-            "new_status": new_status,
             "affected_places": len(places.places)
         }
     except HTTPException:
         raise
     except Exception as e:
-        print(f"SNS 계정 상태 변경 API 에러: {e}")
+        print(f"SNS 계정 삭제 API 에러: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
