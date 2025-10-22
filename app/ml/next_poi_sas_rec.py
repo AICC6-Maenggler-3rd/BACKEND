@@ -196,10 +196,12 @@ async def recommend_next(ckpt_path:str,
                    prefix_place_ids:List[int],
                    region_lat:float, region_lng:float,
                    companions:str, themes:List[str],
-                   topk:int=10, cand_size:int=400, radius_km:float=50.0,
+                   topk:int=10, cand_size:int=400, radius_km:float=10.0,
                    must_visit:Optional[List[int]]=None,
                    already_visited:Optional[List[int]]=None,
-                   alpha_pop:float=0.2):
+                   alpha_pop:float=0.2,
+                   center_cut_km:float=20.0
+                   ):
     device="cuda" if torch.cuda.is_available() else "cpu"
 
     # ckpt / meta
@@ -245,6 +247,29 @@ async def recommend_next(ckpt_path:str,
             if ix in ban_ix: mask[i]=False
         logits[~mask] = -1e9
 
+    pid_pool = [meta["ix2pid"][int(ix)] for ix in pool[0].tolist()]
+    lat_arr = torch.tensor(places.set_index("place_id").loc[pid_pool]["lat"].values, device=device)
+    lng_arr = torch.tensor(places.set_index("place_id").loc[pid_pool]["lng"].values, device=device)
+
+    def hav_km_t(a,b,c,d):
+        p = math.pi/180.0
+        dlat=(c-a)*p; dlng=(d-b)*p
+        A=(torch.sin(dlat/2)**2 + torch.cos(a*p)*torch.cos(c*p)*(torch.sin(dlng/2)**2))
+        return 2*6371.0*torch.asin(torch.sqrt(torch.clamp(A,0,1)))
+
+    dist_center = hav_km_t(torch.tensor(region_lat,device=device), torch.tensor(region_lng,device=device),
+                        lat_arr, lng_arr)
+    logits[dist_center > center_cut_km] = -1e9
+
+    # 마지막 방문지 기준 하드 컷(점프 방지)
+    if len(prefix_place_ids) > 0:
+        last_pid = prefix_place_ids[-1]
+        if last_pid in meta["pid2ix"]:
+            last = places.set_index("place_id").loc[int(last_pid)]
+            dist_last = hav_km_t(torch.tensor(float(last["lat"]),device=device),
+                                torch.tensor(float(last["lng"]),device=device),
+                                lat_arr, lng_arr)
+            logits[dist_last > 15.0] = -1e9   
     # Top-K 반환
     k=min(topk, logits.numel())
     vals, idx = torch.topk(logits, k=k)
