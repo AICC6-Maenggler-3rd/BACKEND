@@ -1,4 +1,6 @@
 from __future__ import annotations
+from gettext import install
+import nntplib
 from typing import Optional, List, Union
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -143,7 +145,7 @@ class PlaceCategoryLink(BaseModel):
 # user_dto  = AppUserSchema.model_validate(sa_user, from_attributes=True)
 
 class ItineraryPlaceItem(ItineraryItemSchema):
-    info: PlaceSchema
+    info: Optional[PlaceSchema] = None
 
 class ItineraryAccommodationItem(ItineraryItemSchema):
     info: AccommodationSchema
@@ -226,3 +228,35 @@ class ItineraryListResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+# ----------- 일정 상세 조회 -----------
+class ItineraryDetailMetadata(BaseModel):
+    itinerary_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
+    total_items: int
+    active_items: int
+    deleted_items: int
+    total_places: int
+    total_accommodations: int
+    required_items: int
+    optional_items: int
+
+class ItineraryDetailResponse(BaseModel):
+    itinerary: ItineraryResponse
+    metadata: ItineraryDetailMetadata
+
+class ItineraryItemWithStatus(BaseModel):
+    item_id: int
+    itinerary_id: int
+    place_id: int
+    accommodation_id: Optional[int] =  None
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    is_required: bool
+    created_at: datetime
+    deleted_at: Optional[datetime] = None
+    is_deleted: bool
+    item_type: str
+    info: Union[PlaceSchema, AccommodationSchema]
