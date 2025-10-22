@@ -9,7 +9,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
 from datetime import datetime
 from app.repositories.placedb import get_place
-from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary
+from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary, nextpoi_generate_itinerary
 from sqlalchemy import func
 
 
@@ -20,6 +20,8 @@ async def generate_itinerary(db: AsyncSession, generate_itinerary_request: Itine
         itinerary = await none_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "random":
         itinerary = await random_generate_itinerary(db, generate_itinerary_request)
+    elif generate_itinerary_request.model_name == "nextpoi":
+        itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
     else:
         raise ValueError(f"Invalid model name: {generate_itinerary_request.model_name}")
     return itinerary

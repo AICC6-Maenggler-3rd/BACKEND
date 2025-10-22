@@ -1,9 +1,16 @@
 name: inpick-fastapi
 channels:
-  - conda-forge
+  - pytorch
   - defaults
+  - conda-forge
 dependencies:
   - python=3.11
+  - numpy>=1.26
+  - pandas>=2.1
+  - pytorch>=2.6
+  - cpuonly
+  - mkl
+  - mkl-service
   - pip
   - pip:
       - fastapi
@@ -13,7 +20,7 @@ dependencies:
       - python-multipart
       - requests
       - gunicorn
-      - motor             
+      - motor
       - python-dotenv
       - langchain
       - langchain-openai
