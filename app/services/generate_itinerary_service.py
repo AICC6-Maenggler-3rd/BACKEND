@@ -7,13 +7,13 @@ from datetime import datetime, timedelta
 from app.repositories.placedb import get_place, get_random_place
 from app.repositories.regiondb import get_region_by_name
 from app.services.itinerary_service import ItineraryPlaceItem, ItineraryItemResponse
-from app.ml.next_poi_sas_rec import recommend_next
+from app.ml.next_poi_gru4rec import get_next_poi_list
 import math
 from typing import List
 
 
 async def get_generate_model_list()-> List[str]:
-  return ["none", "random", "nextpoi"]
+  return ["none", "random", "gru4rec"]
 
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
@@ -119,27 +119,28 @@ async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_reques
     if themes is None:
       themes = ["여행"]
     try:
-      recs = await recommend_next(ckpt_path=CKPT, places_path=PLACES, prefix_place_ids=place_ids, region_lat=region.address_la, region_lng=region.address_lo, companions=companions, themes=themes, already_visited=visit_place_ids)
+      last_place_id = place_ids[-1]
+      last_place = await get_place(db, last_place_id)
+      # recs = await recommend_next(ckpt_path=CKPT, places_path=PLACES, prefix_place_ids=place_ids, region_lat=last_place.address_la, region_lng=last_place.address_lo, companions=companions, themes=themes, already_visited=visit_place_ids)
+      recs = await get_next_poi_list(model=CKPT, places=PLACES, start_lat=last_place.address_la, start_lng=last_place.address_lo, companion=companions, cats=themes, required=place_ids, length=4, radius_km=5.0)
+      print("recs", recs)
+
+      for place_id in recs[len(place_ids):]:
+        place = await get_place(db, place_id)
+        place_schema = PlaceSchema.model_validate(place)
+        itinerary.items.append(ItineraryItemResponse(item_type="place", data=ItineraryPlaceItem(
+          item_id=-1,
+          itinerary_id=-1,
+          place_id=place_id,
+          accommodation_id=None,
+          start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=9),
+          end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=18),
+          is_required=True,
+          created_at=datetime.now(),
+          info=place_schema,
+        )))
+        visit_place_ids.append(place_id)
     except Exception as e:
       print("error", e)
       continue
-    if len(recs) == 0:
-      continue
-    print("recs", recs)
-    for rec in recs[:5-place_count]:
-      place = await get_place(db, rec["place_id"])
-      place_schema = PlaceSchema.model_validate(place)
-      itinerary.items.append(ItineraryItemResponse(item_type="place", data=ItineraryPlaceItem(
-        item_id=-1,
-        itinerary_id=-1,
-        place_id=rec["place_id"],
-        accommodation_id=None,
-        start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=9),
-        end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=18),
-        is_required=True,
-        created_at=datetime.now(),
-        info=place_schema,
-      )))
-      visit_place_ids.append(rec["place_id"])
-
   return itinerary

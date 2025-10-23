@@ -3,8 +3,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "ml" / "artifacts"
-POI_MODEL_PATH = MODEL_DIR / "nextpoi_sasrec.pt"
-PLACES_PATH = MODEL_DIR / "places_with_ids.csv"
+POI_MODEL_PATH = MODEL_DIR / "nextpoi_gru4rec.pt"
+PLACES_PATH = MODEL_DIR / "places_enriched.csv"
 class Settings(BaseSettings):
     MONGO_URI: str
     MONGO_DB_NAME: str
