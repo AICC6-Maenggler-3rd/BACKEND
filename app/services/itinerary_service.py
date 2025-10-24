@@ -14,10 +14,10 @@ from sqlalchemy import func
 
 
 def add_korean_timezone(dt: datetime) -> datetime:
-    """UTC 시간에 9시간을 더해서 한국 시간으로 변환"""
+    """DB에 저장된 시간을 그대로 반환 (이미 한국 시간으로 저장되어 있음)"""
     if dt is None:
         return None
-    return dt + timedelta(hours=9)
+    return dt
 
 
 async def generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
