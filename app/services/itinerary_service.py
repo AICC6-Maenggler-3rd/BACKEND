@@ -27,7 +27,7 @@ async def generate_itinerary(db: AsyncSession, generate_itinerary_request: Itine
         itinerary = await none_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "random":
         itinerary = await random_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "nextpoi":
+    elif generate_itinerary_request.model_name == "gru4rec":
         itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
     else:
         raise ValueError(f"Invalid model name: {generate_itinerary_request.model_name}")
