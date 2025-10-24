@@ -230,7 +230,18 @@ def build_itinerary(model, L, start_lat, start_lng, companion, trip_cats,
                 seq[i] = rid; break
     return seq
 
-async def get_next_poi_list(model, places, start_lat, start_lng, companion, cats, required, length = 6, radius_km=40.0, step_radius_km=20.0, cpu="store_true"):
+async def get_next_poi_list(
+    model, 
+    places, 
+    start_lat, 
+    start_lng, 
+    companion, 
+    cats, 
+    required, 
+    length = 6, 
+    radius_km=40.0, 
+    step_radius_km=20.0, 
+    cpu="store_true"):
     device="cuda" if torch.cuda.is_available() else "cpu"
     model, pid2idx, idx2pid, places = load_artifacts(model, places, device)
 

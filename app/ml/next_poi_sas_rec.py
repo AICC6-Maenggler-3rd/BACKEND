@@ -1,316 +1,371 @@
-# infer_nextpoi_sasrec.py
-# 사용: python infer_nextpoi_sasrec.py
-# 준비물:
-#   1) 체크포인트: ./out/nextpoi_sasrec.pt   (train_next_poi_sasrec.py로 학습)
-#   2) 장소파일:   ./out/places.xlsx 또는 ./out/places_with_ids.csv
-# 기능:
-#   - prefix 시퀀스+컨텍스트로 Top-K 다음 장소 추천
-#   - must_visit(필수방문)·already_visited 마스킹
-#   - 테마/지역좌표 기반 후보 축소
+# filename: recommend_next_poi.py
+import argparse
+from pathlib import Path
+import pickle
+from typing import List, Iterable, Optional, Tuple, Set, Dict, Any
 
-import os, math, json, argparse
-from ast import literal_eval
-from typing import List, Tuple, Dict, Optional
-import numpy as np
+import math
 import pandas as pd
 import torch
 import torch.nn as nn
 
-# ======= 모델 정의(SASRecNextPOI: 학습 스크립트와 동일) =======
-class SASRecNextPOI(nn.Module):
-    def __init__(self, n_items:int, ctx_dim:int, d:int=256, heads:int=8, layers:int=3, drop:float=0.2):
+
+# -------------------------
+# 공통: 매핑/거리/파서
+# -------------------------
+def load_mappings(mappings_dir: str = "models") -> tuple[dict, dict]:
+    mdir = Path(mappings_dir)
+    with open(mdir / "place2idx.pkl", "rb") as f:
+        place2idx = pickle.load(f)
+    with open(mdir / "idx2place.pkl", "rb") as f:
+        idx2place = pickle.load(f)
+    return place2idx, idx2place
+
+def to_index_sequence(places: Iterable[int], place2idx: dict, max_len: int = 20) -> torch.Tensor:
+    seq_idx = [place2idx[p] for p in places if p in place2idx]
+    seq_idx = seq_idx[-max_len:]
+    pad = [0] * (max_len - len(seq_idx))
+    return torch.tensor(pad + seq_idx, dtype=torch.long).unsqueeze(0)  # (1, L)
+
+def haversine_km(lat1, lon1, lat2, lon2) -> float:
+    R = 6371.0088
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+def split_multi(s: str) -> List[str]:
+    if not isinstance(s, str):
+        return []
+    return [t.strip() for p in s.split("|") for t in p.split(",") if t.strip()]
+
+def norm_tokens(xs: Iterable[str]) -> Set[str]:
+    return {x.strip().lower() for x in xs if x and str(x).strip()}
+
+class SASRec(nn.Module):
+    def __init__(self, num_items, hidden_size=128, max_len=20, num_heads=2, num_layers=2):
         super().__init__()
-        self.item_emb = nn.Embedding(n_items+1, d, padding_idx=0)
-        self.pos_emb  = nn.Embedding(512, d)
-        self.ctx_mlp = nn.Sequential(nn.Linear(ctx_dim,256), nn.GELU(), nn.Linear(256,d), nn.LayerNorm(d))
-        enc = nn.TransformerEncoderLayer(d_model=d, nhead=heads, dim_feedforward=4*d, dropout=drop, batch_first=True)
-        self.encoder = nn.TransformerEncoder(enc, num_layers=layers)
-        self.norm = nn.LayerNorm(d)
-        self.drop = nn.Dropout(drop)
+        self.item_emb = nn.Embedding(num_items, hidden_size, padding_idx=0)
+        self.pos_emb = nn.Embedding(max_len, hidden_size)
+        self.encoder_layers = nn.TransformerEncoder(  # <-- 이름과 구조 학습 코드와 동일
+            nn.TransformerEncoderLayer(
+                d_model=hidden_size,
+                nhead=num_heads,
+                dim_feedforward=hidden_size * 4,
+                dropout=0.1
+                # batch_first 파라미터 없이 학습과 동일
+            ),
+            num_layers=num_layers
+        )
+        self.dropout = nn.Dropout(0.1)
+        self.layernorm = nn.LayerNorm(hidden_size)
+        self.out = nn.Linear(hidden_size, num_items)
 
-    def encode_query(self, seq_ids, attn_mask, ctx_vec):
-        B,L = seq_ids.size()
-        pos = torch.arange(L, device=seq_ids.device).unsqueeze(0).expand(B,L)
-        x = self.item_emb(seq_ids) + self.pos_emb(pos) + self.ctx_mlp(ctx_vec)[:,None,:]
-        causal = torch.triu(torch.ones(L,L, device=seq_ids.device), diagonal=1).bool()
-        h = self.encoder(x, mask=causal, src_key_padding_mask=~attn_mask)
-        h = self.norm(h)
-        last_idx = attn_mask.long().sum(1)-1
-        q = self.drop(h[torch.arange(B, device=h.device), last_idx])
-        return q  # [B,D]
+    def forward(self, seq):  # (B, L)
+        positions = torch.arange(seq.size(1), device=seq.device).unsqueeze(0)  # (1, L)
+        x = self.item_emb(seq) + self.pos_emb(positions)  # (B, L, D)
+        x = self.layernorm(x)
+        x = self.encoder_layers(x)  # 학습 코드와 동일 호출
+        x = self.dropout(x)
+        last_hidden = x[:, -1, :]   # (B, D)
+        logits = self.out(last_hidden)  # (B, num_items)
+        return logits
+# -------------------------
+# 후보 필터링 규칙
+# -------------------------
+def build_candidates(
+    places_df: pd.DataFrame,
+    place2idx: dict,
+    fixed_place_ids: List[int],
+    start_lat: float,
+    start_lng: float,
+    radius_km: float,
+    step_radius_km: float,
+    companion: str,
+    themes: List[str],
+) -> Set[int]:
+    need_cols = {"place_id", "lat", "lng"}
+    missing = [c for c in need_cols if c not in places_df.columns]
+    if missing:
+        raise ValueError(f"places.csv 누락 컬럼: {missing}  (필수: {sorted(need_cols)})")
 
-# ======= 유틸 =======
-def parse_cat_cell(x):
-    if pd.isna(x): return []
-    s=str(x).strip()
-    if s.startswith('[') and s.endswith(']'):
-        try:
-            arr = literal_eval(s); return [str(v).strip() for v in arr if str(v).strip()]
-        except Exception:
-            pass
-    return [t.strip() for t in s.split(',') if t.strip()]
+    # 1) 시작 반경 필터
+    within_radius: Set[int] = set()
+    for r in places_df.itertuples(index=False):
+        pid = int(getattr(r, "place_id"))
+        if pid not in place2idx:
+            continue
+        d = haversine_km(start_lat, start_lng, float(getattr(r, "lat")), float(getattr(r, "lng")))
+        if d <= radius_km:
+            within_radius.add(pid)
 
-def load_places(places_path:str):
-    p=str(places_path)
-    if p.lower().endswith(".csv"): df=pd.read_csv(p)
-    else: df=pd.read_excel(p)
-    need={"place","address","lat","lng","place_type","category"}
-    miss=need - set(df.columns)
-    if miss: raise ValueError(f"places 필수 컬럼 누락: {miss}")
-    if "place_id" not in df.columns:
-        df=df.copy(); df["place_id"]=np.arange(1,len(df)+1,dtype=int)
-    df["place_id"]=df["place_id"].astype(int)
-    df["lat"]=pd.to_numeric(df["lat"], errors="coerce")
-    df["lng"]=pd.to_numeric(df["lng"], errors="coerce")
-    df=df.dropna(subset=["lat","lng"])
-    df["categories_list"]=df["category"].apply(parse_cat_cell)
-    return df
+    # 2) step 반경: 마지막 고정 장소 기준
+    if fixed_place_ids:
+        last_pid = fixed_place_ids[-1]
+        last_row = places_df.loc[places_df["place_id"] == last_pid]
+        if not last_row.empty:
+            last_lat = float(last_row.iloc[0]["lat"])
+            last_lng = float(last_row.iloc[0]["lng"])
+            near_last: Set[int] = set()
+            for r in places_df.itertuples(index=False):
+                pid = int(getattr(r, "place_id"))
+                if pid not in place2idx:
+                    continue
+                d = haversine_km(last_lat, last_lng, float(getattr(r, "lat")), float(getattr(r, "lng")))
+                if d <= step_radius_km:
+                    near_last.add(pid)
+            within_radius = within_radius & near_last if near_last else within_radius
 
-def hav_km(lat1, lng1, lat2, lng2):
-    R=6371.0; p=np.pi/180.0
-    dlat=(lat2-lat1)*p; dlng=(lng2-lng1)*p
-    a=np.sin(dlat/2)**2 + np.cos(lat1*p)*np.cos(lat2*p)*np.sin(dlng/2)**2
-    return 2*R*np.arcsin(np.sqrt(a))
+    # 3) 콘텐츠 선호 필터(옵션): theme/companion 컬럼이 있으면 강화
+    user_themes = norm_tokens(themes)
+    user_comp = str(companion or "").strip().lower()
 
-def load_ckpt_any(ckpt_path:str):
-    ckpt=torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    if isinstance(ckpt, dict):
-        for k in ("state_dict","model_state","model_state_dict","weights","params"):
-            if k in ckpt and isinstance(ckpt[k], dict):
-                sd=ckpt[k]; meta=ckpt.get("meta", {}); cfg=ckpt.get("cfg", {})
-                return sd, meta, cfg
-        # raw state_dict
-        if all(isinstance(v, torch.Tensor) for v in ckpt.values()):
-            return ckpt, {}, {}
-    # nn.Module 저장 케이스
-    if hasattr(ckpt, "state_dict"): 
-        return ckpt.state_dict(), getattr(ckpt,"meta",{}), {}
-    raise ValueError("지원하지 않는 체크포인트 형식")
+    def theme_match(row) -> bool:
+        # 사용할 컬럼 후보: themes, theme, category
+        for col in ["themes", "theme", "category"]:
+            if col in places_df.columns:
+                item = norm_tokens(split_multi(str(row[col])))
+                if user_themes and item and not (user_themes & item):
+                    return False
+        return True
 
-# ======= 로더 =======
-def build_meta_from_ckpt_or_data(meta_ckpt:dict, places:pd.DataFrame):
-    # pid2ix
-    place_ids = places["place_id"].astype(int).tolist()
-    pid2ix = meta_ckpt.get("pid2ix") or {pid:i+1 for i,pid in enumerate(sorted(place_ids))}
-    ix2pid = meta_ckpt.get("ix2pid") or {i:k for k,i in pid2ix.items()}
-    n_items = meta_ckpt.get("n_items", len(pid2ix))
+    def companion_match(row) -> bool:
+        # 사용할 컬럼 후보: companions, relation, companion
+        for col in ["companions", "relation", "companion"]:
+            if col in places_df.columns:
+                item = norm_tokens(split_multi(str(row[col])))
+                if user_comp and item and user_comp not in item:
+                    return False
+        return True
 
-    # 컨텍스트 정의(학습 스크립트와 동일)
-    companions = meta_ckpt.get("companions") or ["혼자서","친구와","연인과","배우자와","부모님과","아이와"]
-    themes = meta_ckpt.get("themes") or ["액티비티","자연","바다","산","쇼핑","문화예술","관광","먹방","힐링"]
-    regions = meta_ckpt.get("regions") or []  # 좌표 버킷 없으면 빈 리스트 허용
-    meta = {
-        "n_items": n_items,
-        "pid2ix": pid2ix, "ix2pid": ix2pid,
-        "companions": companions, "comp2ix": {c:i for i,c in enumerate(companions)},
-        "themes": themes, "theme2ix": {t:i for i,t in enumerate(themes)},
-        "regions": regions, "reg2ix": {r:i for i,r in enumerate(regions)},
-    }
-    # log_pop
-    lp = meta_ckpt.get("log_pop")
-    if lp is None:
-        log_pop = np.zeros(n_items+1, dtype=np.float32)
-    else:
-        lp = np.asarray(lp, dtype=np.float32)
-        if lp.shape[0]==n_items: 
-            log_pop = np.concatenate([np.zeros(1,np.float32), lp])
-        elif lp.shape[0]==n_items+1:
-            log_pop = lp
-        else:
-            log_pop = np.zeros(n_items+1, dtype=np.float32)
-    return meta, log_pop
+    filtered: Set[int] = set()
+    for _, row in places_df.loc[places_df["place_id"].isin(list(within_radius))].iterrows():
+        if theme_match(row) and companion_match(row):
+            filtered.add(int(row["place_id"]))
 
-def ctx_vector(meta, region_lat:float, region_lng:float, companions:str, themes:List[str]):
-    # 학습 시 region을 버킷 토큰으로 썼다면 그대로 쓰고, 없으면 연속값을 투입하지 않고 0-벡터로 둔다.
-    R=len(meta["regions"]); C=len(meta["companions"]); T=len(meta["themes"])
-    reg = torch.zeros(R)
-    # 가장 가까운 버킷이 있으면 1-hot
-    if R>0:
-        # regions: "lat,lng" 문자열
-        def to_xy(s): 
-            a,b = s.split(","); return float(a), float(b)
-        coords=np.array([to_xy(s) for s in meta["regions"]], dtype=float)
-        dist = hav_km(coords[:,0], coords[:,1], region_lat, region_lng)
-        reg[int(np.argmin(dist))]=1.0
-    cp = torch.zeros(C); th = torch.zeros(T)
-    if companions in meta["comp2ix"]: cp[meta["comp2ix"][companions]]=1.0
-    for t in themes:
-        if t in meta["theme2ix"]: th[meta["theme2ix"][t]]=1.0
-    return torch.cat([reg, cp, th], 0).unsqueeze(0)  # [1, R+C+T]
+    # 최소 보장: 너무 적으면 반경만 적용
+    if len(filtered) < 5:
+        filtered = within_radius
 
-# ======= 후보 생성 =======
-THEME2CAT = {
-    "액티비티": ["액티비티","오락","레저","스포츠","VR","테마파크"],
-    "자연": ["자연","공원","숲","계곡","정원","호수"],
-    "바다": ["바다","해변","서핑","스노클링","항구"],
-    "산": ["산","등산","전망대","트레일"],
-    "쇼핑": ["쇼핑","시장","상점가","아울렛","백화점"],
-    "문화예술": ["전시장","미술관","박물관","공연","도서관"],
-    "관광": ["관광지","랜드마크","전통","유적","핫플"],
-    "먹방": ["음식점","맛집","노포","카페","야시장"],
-    "힐링": ["스파","온천","찜질방","카페","공원"]
-}
+    # 고정 장소는 제외
+    filtered -= set(int(x) for x in fixed_place_ids)
+    return filtered
 
-def build_candidate_pool(places:pd.DataFrame, meta:dict,
-                         region_lat:float, region_lng:float,
-                         themes:List[str], radius_km:float=50.0,
-                         cand_size:int=400,
-                         include_pids:Optional[List[int]]=None) -> np.ndarray:
-    include_pids = include_pids or []
-    cats=set(sum([THEME2CAT.get(t,[]) for t in themes], []))
-    lat = places["lat"].to_numpy(); lng = places["lng"].to_numpy()
-    d = hav_km(lat, lng, region_lat, region_lng)
+# -------------------------
+# 재순위 규칙(거리+콘텐츠 보정)
+# -------------------------
+def rerank(
+    base_scores: Dict[int, float],
+    places_df: pd.DataFrame,
+    start_lat: float,
+    start_lng: float,
+    themes: List[str],
+    alpha_dist: float = 0.03,   # 거리 보정 강도(작게)
+    beta_theme: float = 0.10,   # 테마 일치 보정
+) -> List[Tuple[int, float, Dict[str, Any]]]:
+    user_themes = norm_tokens(themes)
+    rows = []
+    for pid, s in base_scores.items():
+        row = places_df.loc[places_df["place_id"] == pid]
+        if row.empty:
+            rows.append((pid, s, {"dist_km": None, "theme_hit": 0}))
+            continue
+        lat = float(row.iloc[0]["lat"])
+        lng = float(row.iloc[0]["lng"])
+        d = haversine_km(start_lat, start_lng, lat, lng)
+        # 테마 히트 계산
+        theme_hit = 0
+        for col in ["themes", "theme", "category"]:
+            if col in row.columns:
+                item = norm_tokens(split_multi(str(row.iloc[0][col])))
+                if user_themes and (user_themes & item):
+                    theme_hit = 1
+                    break
+        score = s + beta_theme * theme_hit - alpha_dist * d
+        rows.append((pid, score, {"dist_km": d, "theme_hit": theme_hit}))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    return rows
 
-    # 1) 반경 필터
-    mask = d <= radius_km
-    if mask.sum() < cand_size//2:
-        # 반경이 너무 작으면 상위 근접으로 확장
-        nearest_idx = np.argsort(d)[:max(cand_size, 1000)]
-        mask = np.zeros(len(places), dtype=bool); mask[nearest_idx]=True
-
-    # 2) 테마 교집합 가중
-    match = places["categories_list"].apply(lambda a: len(set(a)&cats)>0).to_numpy(bool)
-    pri = 1.5*match.astype(float) + 1.0  # 테마 일치 가중
-
-    # 3) 거리 가중
-    near = 1.0/(1.0 + d.clip(min=0.1))
-    score = (pri * near) * mask.astype(float)
-
-    # 포함 보장
-    if include_pids:
-        inc_ix = np.array([meta["pid2ix"].get(pid,0) for pid in include_pids if pid in meta["pid2ix"]], dtype=int)
-        inc_m = np.isin(places["place_id"].to_numpy(), include_pids)
-        score[inc_m] = score.max() + 1.0
-
-    idx = np.argsort(-score)[:max(cand_size, 50)]
-    # item-idx(ix)로 변환
-    pid = places["place_id"].to_numpy()[idx]
-    ix = np.array([meta["pid2ix"].get(int(p),0) for p in pid], dtype=int)
-    ix = ix[ix>0]
-    return ix  # [C]
-
-# ======= 추론 =======
+# -------------------------
+# 메인 추천 함수
+# -------------------------
 @torch.no_grad()
-async def recommend_next(ckpt_path:str,
-                   places_path:str,
-                   prefix_place_ids:List[int],
-                   region_lat:float, region_lng:float,
-                   companions:str, themes:List[str],
-                   topk:int=10, cand_size:int=400, radius_km:float=10.0,
-                   must_visit:Optional[List[int]]=None,
-                   already_visited:Optional[List[int]]=None,
-                   alpha_pop:float=0.2,
-                   center_cut_km:float=20.0
-                   ):
-    device="cuda" if torch.cuda.is_available() else "cpu"
+def get_next_poi_list(
+    model, 
+    places, 
+    start_lat, 
+    start_lng, 
+    companion, 
+    cats, 
+    required, 
+    length = 6, 
+    radius_km=40.0, 
+    step_radius_km=20.0, 
+    cpu="store_true"
+) -> List[Dict[str, Any]]:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    places_df = pd.read_csv(places)
 
-    # ckpt / meta
-    state_dict, meta_ckpt, _ = load_ckpt_any(ckpt_path)
-    places = load_places(places_path)
-    meta, log_pop = build_meta_from_ckpt_or_data(meta_ckpt, places)
+    all_place_ids = places_df["place_id"].unique().tolist()
+    place2idx = {pid: i+1 for i, pid in enumerate(all_place_ids)}
+    idx2place = {i+1: pid for i, pid in enumerate(all_place_ids)}
+    num_items = max(idx2place.keys()) + 1
 
-    # 모델 구성(학습 스크립트 구조)
-    ctx_dim = len(meta["regions"])+len(meta["companions"])+len(meta["themes"])
-    model = SASRecNextPOI(meta["n_items"], ctx_dim, d=256, heads=8, layers=3, drop=0.2)
-    model.load_state_dict(state_dict, strict=True)
-    model.to(device).eval()
+    model = SASRec(num_items=num_items, hidden_size=128, max_len=length, num_heads=2, num_layers=2).to(device)
+    state = torch.load(model, map_location=device)
+    model.load_state_dict(state)
+    model.eval()
+
+
+    # 후보 집합
+    candidates = build_candidates(
+        places_df=places_df,
+        place2idx=place2idx,
+        fixed_place_ids=required,
+        start_lat=start_lat,
+        start_lng=start_lng,
+        radius_km=radius_km,
+        step_radius_km=step_radius_km,
+        companion=companion,
+        themes=cats,
+    )
+
+    # --- 디버그: 후보 수 집계 ---
+    def dbg(msg): 
+        print(f"[DEBUG] {msg}")
+
+    dbg(f"fixed={len(required)}, radius_km={radius_km}, step_radius_km={step_radius_km}")
+    dbg(f"place2idx size={len(place2idx)}, places.csv rows={len(places_df)}")
+    dbg(f"initial candidates={len(candidates)}")
+
+    # --- 점진적 완화 ---
+    if not candidates:
+        dbg("no candidates -> drop theme/companion + step constraint")
+        # 1) 반경만 적용
+        within = set()
+        for r in places_df.itertuples(index=False):
+            pid = int(getattr(r, "place_id"))
+            if pid not in place2idx:
+                continue
+            d = haversine_km(start_lat, start_lng, float(getattr(r, "lat")), float(getattr(r, "lng")))
+            if d <= radius_km:
+                within.add(pid)
+        within -= set(int(x) for x in required)
+        candidates = within
+        dbg(f"radius-only candidates={len(candidates)}")
+
+    if not candidates:
+        dbg("still empty -> expand radius x2")
+        expand = radius_km * 2.0
+        for r in places_df.itertuples(index=False):
+            pid = int(getattr(r, "place_id"))
+            if pid not in place2idx:
+                continue
+            d = haversine_km(start_lat, start_lng, float(getattr(r, "lat")), float(getattr(r, "lng")))
+            if d <= expand:
+                candidates.add(pid)
+        candidates -= set(int(x) for x in required)
+        dbg(f"expanded candidates={len(candidates)}")
+
+    if not candidates:
+        dbg("still empty -> force top-pop from mapping intersection")
+        candidates = {pid for pid in places_df["place_id"].tolist() if pid in place2idx}
+        candidates -= set(int(x) for x in required)
+        dbg(f"fallback candidates={len(candidates)}")
+
+    if not candidates:
+        dbg("no candidates at all -> return []")
+        return []
 
     # 입력 시퀀스
-    ids = [meta["pid2ix"].get(int(pid),0) for pid in prefix_place_ids if int(pid) in meta["pid2ix"]]
-    if not ids: raise ValueError("prefix_place_ids가 모두 OOV 입니다.")
-    seq = torch.tensor(ids, dtype=torch.long, device=device).unsqueeze(0)
-    attn = torch.ones_like(seq, dtype=torch.bool)
-    ctx = ctx_vector(meta, region_lat, region_lng, companions, themes).to(device)
+    seq = to_index_sequence(required, place2idx, max_len=length).to(device)
 
-    # 후보
-    pool_ix = build_candidate_pool(places, meta, region_lat, region_lng, themes, radius_km, cand_size,
-                                   include_pids=must_visit or [])
-    pool = torch.tensor(pool_ix, dtype=torch.long, device=device).unsqueeze(0)  # [1,C]
+    # 로짓
+    logits = model(seq).squeeze(0)  # (num_items,)
+    logits[0] = float("-inf")
 
-    # 쿼리 인코딩
-    q = model.encode_query(seq, attn, ctx)[0]  # [D]
+    # 방문 제외
+    for p in required:
+        if p in place2idx:
+            logits[place2idx[p]] = float("-inf")
 
-    # 점수(임베딩 내적 + 인기도 prior)
-    emb = model.item_emb(pool[0])              # [C,D]
-    logits = (emb @ q).float()                 # [C]
-    lp = torch.from_numpy(log_pop).to(device)[pool[0]]
-    logits = logits + alpha_pop * lp
+    # 후보 이외 -inf
+    cand_idx = {place2idx[p] for p in candidates if p in place2idx}
+    all_idx = set(range(len(logits)))
+    for j in all_idx - cand_idx:
+        logits[j] = float("-inf")
 
-    # 마스킹
-    ban_ix = set()
-    for lst in [already_visited or [], prefix_place_ids or []]:
-        ban_ix.update([meta["pid2ix"].get(int(pid),0) for pid in lst if int(pid) in meta["pid2ix"]])
-    if ban_ix:
-        mask = torch.ones_like(logits, dtype=torch.bool)
-        pool_list = pool[0].tolist()
-        for i,ix in enumerate(pool_list):
-            if ix in ban_ix: mask[i]=False
-        logits[~mask] = -1e9
+    # 상위 넉넉히 뽑기 후 재순위
+    k0 = min(max(length * 5, length), int(torch.isfinite(logits).sum().item()))
+    if k0 <= 0:
+        return []
 
-    pid_pool = [meta["ix2pid"][int(ix)] for ix in pool[0].tolist()]
-    lat_arr = torch.tensor(places.set_index("place_id").loc[pid_pool]["lat"].values, device=device)
-    lng_arr = torch.tensor(places.set_index("place_id").loc[pid_pool]["lng"].values, device=device)
+    top_scores, top_idx = torch.topk(logits, k=k0)
+    base_scores = {idx2place[i]: float(s) for i, s in zip(top_idx.tolist(), top_scores.tolist()) if i in idx2place}
 
-    def hav_km_t(a,b,c,d):
-        p = math.pi/180.0
-        dlat=(c-a)*p; dlng=(d-b)*p
-        A=(torch.sin(dlat/2)**2 + torch.cos(a*p)*torch.cos(c*p)*(torch.sin(dlng/2)**2))
-        return 2*6371.0*torch.asin(torch.sqrt(torch.clamp(A,0,1)))
-
-    dist_center = hav_km_t(torch.tensor(region_lat,device=device), torch.tensor(region_lng,device=device),
-                        lat_arr, lng_arr)
-    logits[dist_center > center_cut_km] = -1e9
-
-    # 마지막 방문지 기준 하드 컷(점프 방지)
-    if len(prefix_place_ids) > 0:
-        last_pid = prefix_place_ids[-1]
-        if last_pid in meta["pid2ix"]:
-            last = places.set_index("place_id").loc[int(last_pid)]
-            dist_last = hav_km_t(torch.tensor(float(last["lat"]),device=device),
-                                torch.tensor(float(last["lng"]),device=device),
-                                lat_arr, lng_arr)
-            logits[dist_last > 15.0] = -1e9   
-    # Top-K 반환
-    k=min(topk, logits.numel())
-    vals, idx = torch.topk(logits, k=k)
-    ix_sel = pool[0][idx].tolist()
-    pid_sel = [meta["ix2pid"][int(ix)] for ix in ix_sel]
-    prob = torch.softmax(vals, dim=0).detach().cpu().numpy().tolist()
-
-    # 보기 좋은 결과 묶기
-    places_idx = places.set_index("place_id")
-    results=[]
-    for pid, p in zip(pid_sel, prob):
-        r = places_idx.loc[int(pid)]
-        results.append({
-            "place_id": int(pid),
-            "place": str(r["place"]),
-            "address": str(r["address"]),
-            "lat": float(r["lat"]), "lng": float(r["lng"]),
-            "score": float(p),
-            "categories": list(map(str, r["categories_list"]))
-        })
-    return results
-
-# ======= 예시 실행 =======
-if __name__ == "__main__":
-    # 예시 파라미터(필요에 따라 수정)
-    CKPT = "./out/nextpoi_sasrec.pt"
-    PLACES = "./out/places.xlsx"  # 또는 ./out/places_with_ids.csv
-    prefix = [101, 202, 303]      # 지금까지 방문한 place_id들
-    region_lat, region_lng = 37.5665, 126.9780
-    companions = "연인과"
-    themes = ["힐링","먹방"]
-
-    recs = recommend_next(
-        ckpt_path=CKPT,
-        places_path=PLACES,
-        prefix_place_ids=prefix,
-        region_lat=region_lat, region_lng=region_lng,
-        companions=companions, themes=themes,
-        topk=10, cand_size=400, radius_km=40.0,
-        must_visit=None, already_visited=prefix, alpha_pop=0.2
+    reranked = rerank(
+        base_scores=base_scores,
+        places_df=places_df,
+        start_lat=start_lat,
+        start_lng=start_lng,
+        themes=cats,
+        alpha_dist=0.03,
+        beta_theme=0.10,
     )
-    # 출력
-    for r in recs:
-        print(f'{r["place_id"]}\t{r["place"]}\t{r["score"]:.3f}\t{r["categories"][:3]}')
+
+    out = []
+    for pid, score, meta in reranked[:length]:
+        out.append({
+            "place_id": int(pid),
+            "score": float(score),
+            "distance_from_start_km": meta.get("dist_km"),
+            "theme_hit": int(meta.get("theme_hit", 0)),
+        })
+    return out
+
+# -------------------------
+# CLI
+# -------------------------
+def parse_int_list(s: str) -> List[int]:
+    if not s:
+        return []
+    return [int(x) for x in s.split(",") if x.strip()]
+
+def parse_str_list(s: str) -> List[str]:
+    if not s:
+        return []
+    return [x.strip() for x in s.split(",") if x.strip()]
+
+def main():
+    ap = argparse.ArgumentParser(description="Next-POI recommendation with context filters")
+    ap.add_argument("--model", type=str, default="sasrec_context_model.pt")
+    ap.add_argument("--places_csv", type=str, default="places.csv")
+    ap.add_argument("--fixed", type=str, default="", help="comma-separated place_ids already planned")
+    ap.add_argument("--start_lat", type=float, required=True)
+    ap.add_argument("--start_lng", type=float, required=True)
+    ap.add_argument("--companion", type=str, default="")
+    ap.add_argument("--themes", type=str, default="", help="comma-separated themes")
+    ap.add_argument("--length", type=int, default=10)
+    ap.add_argument("--radius_km", type=float, default=20.0)
+    ap.add_argument("--step_radius_km", type=float, default=5.0)
+    ap.add_argument("--max_len", type=int, default=20)
+    args = ap.parse_args()
+
+    res = get_next_poi_list(
+        model_path=args.model,
+        places_csv=args.places_csv,
+        fixed_place_ids=parse_int_list(args.fixed),
+        start_lat=args.start_lat,
+        start_lng=args.start_lng,
+        companion=args.companion,
+        themes=parse_str_list(args.themes),
+        length=args.length,
+        radius_km=args.radius_km,
+        step_radius_km=args.step_radius_km,
+        max_len=args.max_len,
+    )
+    for r in res:
+        print(f"{r['place_id']},{r['score']:.6f},{r['distance_from_start_km']:.3f},{r['theme_hit']}")
+
+if __name__ == "__main__":
+    main()
