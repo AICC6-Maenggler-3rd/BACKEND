@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.postgre_model import Place, Region
 from app.api.function.common import haversine_distance
+from app.contentmodel.content_based_recommendation_service import content_based_service
+from app.repositories.placedb import get_place
+from app.schemas.postgre_schema import PlaceSchema
 
 # 프로젝트 루트 디렉토리를 파이썬 경로에 추가
 current_dir = Path(__file__).resolve().parent 
@@ -112,3 +115,39 @@ async def test_distance(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         return {'error' : str(e)}
     return 'success'
+
+@router.get("/places")
+async def recommend_places_from_user_input(
+    theme: str,
+    relation: str,
+    location: str,
+    num_recommendations: int = 10,
+    db: AsyncSession = Depends(get_db)
+):
+    """사용자 입력에 기반한 content_based 장소 추천"""
+    try:
+        # content_based 추천 실행
+        recommendations = await content_based_service.recommend_places(
+            db=db,
+            theme=theme,
+            relation=relation,
+            location=location,
+            num_recommendations=num_recommendations,
+            exclude_place_ids=[]
+        )
+        
+        # 추천 결과에서 place_id 추출
+        place_ids = [rec['place_id'] for rec in recommendations]
+        
+        # 각 place_id에 대해 장소 상세 정보 가져오기
+        places = []
+        for place_id in place_ids:
+            place = await get_place(db, place_id)
+            if place:
+                place_schema = PlaceSchema.model_validate(place)
+                places.append(place_schema.model_dump())
+        
+        return places
+    except Exception as e:
+        print(f"[ERROR] recommend_places_from_user_input: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

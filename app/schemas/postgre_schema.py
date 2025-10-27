@@ -1,6 +1,4 @@
 from __future__ import annotations
-from gettext import install
-import nntplib
 from typing import Optional, List, Union
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, model_validator
