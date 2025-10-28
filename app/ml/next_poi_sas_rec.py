@@ -190,8 +190,8 @@ def rerank(
 # 메인 추천 함수
 # -------------------------
 @torch.no_grad()
-def get_next_poi_list(
-    model, 
+async def get_next_poi_list(
+    model_path, 
     places, 
     start_lat, 
     start_lng, 
@@ -211,8 +211,8 @@ def get_next_poi_list(
     idx2place = {i+1: pid for i, pid in enumerate(all_place_ids)}
     num_items = max(idx2place.keys()) + 1
 
-    model = SASRec(num_items=num_items, hidden_size=128, max_len=length, num_heads=2, num_layers=2).to(device)
-    state = torch.load(model, map_location=device)
+    model = SASRec(num_items=num_items, hidden_size=128, max_len=20, num_heads=2, num_layers=2).to(device)
+    state = torch.load(model_path, map_location=device)
     model.load_state_dict(state)
     model.eval()
 
@@ -315,12 +315,13 @@ def get_next_poi_list(
 
     out = []
     for pid, score, meta in reranked[:length]:
-        out.append({
-            "place_id": int(pid),
-            "score": float(score),
-            "distance_from_start_km": meta.get("dist_km"),
-            "theme_hit": int(meta.get("theme_hit", 0)),
-        })
+        # out.append({
+        #     "place_id": int(pid),
+        #     "score": float(score),
+        #     "distance_from_start_km": meta.get("dist_km"),
+        #     "theme_hit": int(meta.get("theme_hit", 0)),
+        # })
+        out.append(int(pid))
     return out
 
 # -------------------------

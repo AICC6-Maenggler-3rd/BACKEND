@@ -2,19 +2,20 @@ from app.schemas.postgre_schema import ItineraryItemSchema, ItinerarySchema, Pla
 from app.models.postgre_model import Itinerary, ItineraryItem, Place, Accommodation
 from app.services.itinerary_service import ItineraryGenerate, ItineraryResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.config import POI_MODEL_PATH, PLACES_PATH
+from app.core.config import POI_MODEL_PATH, POI_MODEL_PATH_SAS_REC, PLACES_PATH
 from datetime import datetime, timedelta
 from app.repositories.placedb import get_place, get_random_place
 from app.repositories.regiondb import get_region_by_name
 from app.services.itinerary_service import ItineraryPlaceItem, ItineraryItemResponse
-from app.ml.next_poi_gru4rec import get_next_poi_list
+from app.ml.next_poi_gru4rec import get_next_poi_list as get_next_poi_list_gru4rec
+from app.ml.next_poi_sas_rec import get_next_poi_list as get_next_poi_list_sas_rec
 from app.contentmodel.content_based_recommendation_service import content_based_service
 import math
 from typing import List
 
 
 async def get_generate_model_list()-> List[str]:
-  return ["none", "random", "gru4rec", "content_based"]
+  return ["random", "gru4rec", "sas_rec", "content_based"]
 
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
@@ -123,9 +124,56 @@ async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_reques
       last_place_id = place_ids[-1]
       last_place = await get_place(db, last_place_id)
       # recs = await recommend_next(ckpt_path=CKPT, places_path=PLACES, prefix_place_ids=place_ids, region_lat=last_place.address_la, region_lng=last_place.address_lo, companions=companions, themes=themes, already_visited=visit_place_ids)
-      recs = await get_next_poi_list(model=CKPT, places=PLACES, start_lat=last_place.address_la, start_lng=last_place.address_lo, companion=companions, cats=themes, required=place_ids, length=4, radius_km=5.0)
+      recs = await get_next_poi_list_gru4rec(model=CKPT, places=PLACES, start_lat=last_place.address_la, start_lng=last_place.address_lo, companion=companions, cats=themes, required=place_ids, length=4, radius_km=5.0)
       print("recs", recs)
 
+      for place_id in recs[len(place_ids):]:
+        place = await get_place(db, place_id)
+        place_schema = PlaceSchema.model_validate(place)
+        itinerary.items.append(ItineraryItemResponse(item_type="place", data=ItineraryPlaceItem(
+          item_id=-1,
+          itinerary_id=-1,
+          place_id=place_id,
+          accommodation_id=None,
+          start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=9),
+          end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=18),
+          is_required=True,
+          created_at=datetime.now(),
+          info=place_schema,
+        )))
+        visit_place_ids.append(place_id)
+    except Exception as e:
+      print("error", e)
+      continue
+  return itinerary
+
+async def sas_rec_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
+  # 기존에 있는 장소는 유지하고, 하루에 장소가 3개가 되도록 랜덤으로 장소를 추가
+  itinerary = await none_generate_itinerary(db, generate_itinerary_request)
+  visit_place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place"]
+  CKPT = POI_MODEL_PATH_SAS_REC
+  PLACES = PLACES_PATH
+  duration = calculate_duration(generate_itinerary_request.base_itinerary.start_at, generate_itinerary_request.base_itinerary.end_at)
+  for day in range(duration):
+    # 해당 날짜의 장소 목록
+    place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place" and calculate_day_index(generate_itinerary_request.base_itinerary.start_at, x.data.start_time) == day]
+    print("place_ids", place_ids)
+    place_count = len(place_ids)
+    if place_count >= 5:
+      continue
+    region = await get_region_by_name(db, generate_itinerary_request.base_itinerary.location)
+    if region is None:
+      print("region not found")
+      continue
+    companions = generate_itinerary_request.base_itinerary.relation
+    themes = generate_itinerary_request.base_itinerary.theme
+    if themes is None:
+      themes = ["여행"]
+    try:
+      last_place_id = place_ids[-1]
+      last_place = await get_place(db, last_place_id)
+      recs = await get_next_poi_list_sas_rec(model_path=CKPT, places=PLACES, start_lat=last_place.address_la, start_lng=last_place.address_lo, companion=companions, cats=themes, required=place_ids, length=4, radius_km=5.0)
+      print("recs", recs)
       for place_id in recs[len(place_ids):]:
         place = await get_place(db, place_id)
         place_schema = PlaceSchema.model_validate(place)
