@@ -1,6 +1,4 @@
-from pathlib import Path
-
-readme_content = """# 🧭 여행 일정 추천 모델 (Context-GRU4Rec)
+# 🧭 여행 일정 추천 모델 (Context-GRU4Rec)
 
 ## 개요
 이 프로젝트는 **여행 일정 추천 시스템**의 핵심 AI 모델로,  
@@ -39,6 +37,7 @@ GRU(Gated Recurrent Unit)는 순서를 가진 데이터를 처리하며
 
 기본 GRU4Rec에 **여행 맥락(Context)** 임베딩을 추가했습니다.
 
+```
 [장소 ID 시퀀스]
 │
 ├── item_emb (장소 임베딩)
@@ -52,6 +51,7 @@ GRU(Gated Recurrent Unit)는 순서를 가진 데이터를 처리하며
 [ Fully Connected + Softmax ]
 ▼
 다음 장소 확률 예측
+```
 
 ### 입력 피처
 | 피처 | 설명 |
@@ -141,43 +141,46 @@ GRU(Gated Recurrent Unit)는 순서를 가진 데이터를 처리하며
 
 과정:
 
-시작 좌표 주변 반경 내 후보 장소 필터
-
-모델로 각 후보의 “다음 장소 확률” 계산
-
-필수 여행지를 중간 슬롯에 삽입
-
-반경/거리 제약(radius_km, step_radius_km) 적용
-
-최종 일정 반환
+- 시작 좌표 주변 반경 내 후보 장소 필터
+- 모델로 각 후보의 “다음 장소 확률” 계산
+- 필수 여행지를 중간 슬롯에 삽입
+- 반경/거리 제약(radius_km, step_radius_km) 적용
+- 최종 일정 반환
 
 출력:
 
+```
 [
   {"order": 1, "place": "경복궁", "type": "관광지"},
   {"order": 2, "place": "삼청동 카페거리", "type": "카페"},
   {"order": 3, "place": "북촌 한옥마을", "type": "관광지"},
 ]
+```
+
 
 ## 🧩 주요 하이퍼파라미터
-이름	기본값	설명
-embedding_dim	128	장소 임베딩 차원
-epochs	25	학습 에폭 수
-batch_size	256	미니배치 크기
-lr	1e-3	학습률
-dropout	0.2	드롭아웃 비율
-radius_km	5	시작 좌표 반경
-step_radius_km	3	연속 장소 간 최대 이동 거리
+| 이름 | 기본값 | 설명 |
+|------|--------|------|
+| embedding_dim | 128 | 장소 임베딩 차원 |
+| epochs | 25 | 학습 에폭 수 |
+| batch_size | 256 | 미니배치 크기 |
+| lr | 1e-3 | 학습률 |
+| dropout | 0.2 | 드롭아웃 비율 |
+| radius_km | 5 | 시작 좌표 반경 |
+| step_radius_km | 3 | 연속 장소 간 최대 이동 거리 |
 ## 🔧 사용 예시
 ### 학습
+```
 python train_sequence_recommender.py \
   --places places_enriched.csv \
   --sessions sessions.csv \
   --interactions interactions.csv \
   --out model.pt \
   --epochs 10
+```
 
 ### 추천(추론)
+```
 python infer_sequence_recommender.py \
   --model model.pt \
   --places places_enriched.csv \
@@ -186,22 +189,22 @@ python infer_sequence_recommender.py \
   --companion 친구와 \
   --cats "[관광,먹방]" \
   --length 7
+```
 
 ## 📈 평가 지표
-지표	설명
-Recall@K	상위 K개 예측 중 실제 다음 장소 포함 여부
-MRR@K	실제 정답이 몇 번째로 예측됐는지 평균 역순위
-지리 일관성	이동 거리 제약을 벗어나는 비율
-테마 일치율	사용자 테마와 추천 장소 카테고리의 교집합 비율
-💡 요약
-항목	설명
-모델명	Context-GRU4Rec
-핵심	순서(시퀀스) + 맥락(Context) 학습
-입력	방문 장소, 동반자, 테마, 거리, 시간
-출력	다음 장소의 확률
-특징	반경 기반 필터링 + 필수 여행지 삽입
-응용	여행 일정 추천, 사용자 맞춤 경로 생성
+| 지표 | 설명 |
+|------|------|
+| Recall@K | 상위 K개 예측 중 실제 다음 장소 포함 여부 |
+| MRR@K | 실제 정답이 몇 번째로 예측됐는지 평균 역순위 |
+| 지리 일관성 | 이동 거리 제약을 벗어나는 비율 |
+| 테마 일치율 | 사용자 테마와 추천 장소 카테고리의 교집합 비율 |
+## 💡 요약
+| 항목 | 설명 |
+|------|------|
+| 모델명 | Context-GRU4Rec |
+| 핵심 | 순서(시퀀스) + 맥락(Context) 학습 |
+| 입력 | 방문 장소, 동반자, 테마, 거리, 시간 |
+| 출력 | 다음 장소의 확률 |
+| 특징 | 반경 기반 필터링 + 필수 여행지 삽입 |
+| 응용 | 여행 일정 추천, 사용자 맞춤 경로 생성 |
 
-
-## SASRec -> GRU4Rec으로 바꾼이유
-   - 여행일정 같이 이동 경로가 짧고 지리적 제약이 강한 도메인에서는 GRU4Rec이 SASRec보다 효율적이고 안정적이다.
