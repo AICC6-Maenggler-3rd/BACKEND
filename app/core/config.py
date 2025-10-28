@@ -3,6 +3,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "ml" / "artifacts"
+RAG_DIR = BASE_DIR / "rag" / "faiss_store"
 POI_MODEL_PATH = MODEL_DIR / "nextpoi_gru4rec.pt"
 POI_MODEL_PATH_SAS_REC = MODEL_DIR / "nextpoi_sas_rec.pt"
 PLACES_PATH = MODEL_DIR / "places_enriched.csv"

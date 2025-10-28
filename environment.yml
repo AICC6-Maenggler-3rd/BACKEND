@@ -35,3 +35,4 @@ dependencies:
       - asyncpg
       - databases
       - sqlalchemy
+      - faiss-cpu
