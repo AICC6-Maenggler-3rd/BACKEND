@@ -260,17 +260,17 @@ async def content_based_generate_itinerary(db: AsyncSession, generate_itinerary_
 async def rag_gpt_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
   # 기존에 있는 장소는 유지
   itinerary = await none_generate_itinerary(db, generate_itinerary_request)
-  print("generate_itinerary_request.base_itinerary.location", generate_itinerary_request.base_itinerary.location)
+  # print("generate_itinerary_request.base_itinerary.location", generate_itinerary_request.base_itinerary.location)
   try:
     location = await get_region_by_name2(db, generate_itinerary_request.base_itinerary.location)
   except Exception as e:
     print("error", e)
     return itinerary
 
-  print("location", location)
+  # print("location", location)
 
   duration = calculate_duration(generate_itinerary_request.base_itinerary.start_at, generate_itinerary_request.base_itinerary.end_at)
-  print("duration", duration)
+  # print("duration", duration)
   day_must_visits = {}
 
   try:
@@ -295,7 +295,7 @@ async def rag_gpt_generate_itinerary(db: AsyncSession, generate_itinerary_reques
     radius_km=40.0,
     step_radius_km=10.0,
   )
-  print("plan", plan)
+  # print("plan", plan)
   for day in plan:
     for item in day["items"]:
       place = await get_place(db, int(item["id"]))
