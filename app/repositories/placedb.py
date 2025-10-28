@@ -60,20 +60,37 @@ async def get_places(db: AsyncSession) -> list[Place]:
     result = await db.execute(select(Place))
     return result.scalars().all()
 
+async def get_all_places(db: AsyncSession) -> List[Place]:
+    """모든 장소 정보를 가져오는 함수 (콘텐츠 기반 추천용)"""
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(Place)
+        .options(joinedload(Place.categories))
+    )
+    return result.scalars().unique().all()
+
 async def get_insta_nicknames(db: AsyncSession) -> list[str]:
     """인스타그램 닉네임 목록 조회 (중복 제거)"""
     result = await db.execute(
         select(Place.insta_nickname)
-        .where(Place.insta_nickname.isnot(None))
+        .where(
+            Place.insta_nickname.isnot(None),
+            Place.deleted_at.is_(None)  # 소프트 삭제 제외
+        )
         .distinct()
     )
     return [nickname for nickname in result.scalars().all() if nickname]
 
 async def get_places_by_insta_nickname(db: AsyncSession, insta_nickname: str, page: int, limit: int) -> PlaceListResponse:
     """특정 인스타그램 닉네임으로 장소 조회"""
-    search_query = select(Place).where(
-        Place.insta_nickname == insta_nickname
-    ).order_by(Place.place_id.asc())
+    search_query = (
+        select(Place)
+        .where(
+            Place.insta_nickname == insta_nickname,
+            Place.deleted_at.is_(None)  # 소프트 삭제 제외
+        )
+        .order_by(Place.place_id.asc())
+    )
     return await paginate(db, search_query, page, limit)
 
 async def get_places_by_category(db: AsyncSession, category_id: int) -> list[Place]:

@@ -8,12 +8,13 @@ from app.repositories.placedb import get_place, get_random_place
 from app.repositories.regiondb import get_region_by_name
 from app.services.itinerary_service import ItineraryPlaceItem, ItineraryItemResponse
 from app.ml.next_poi_gru4rec import get_next_poi_list
+from app.contentmodel.content_based_recommendation_service import content_based_service
 import math
 from typing import List
 
 
 async def get_generate_model_list()-> List[str]:
-  return ["none", "random", "gru4rec"]
+  return ["none", "random", "gru4rec", "content_based"]
 
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
@@ -143,4 +144,65 @@ async def nextpoi_generate_itinerary(db: AsyncSession, generate_itinerary_reques
     except Exception as e:
       print("error", e)
       continue
+  return itinerary
+
+async def content_based_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
+  """콘텐츠 기반 추천을 사용한 일정 생성"""
+  # 기존에 있는 장소는 유지
+  itinerary = await none_generate_itinerary(db, generate_itinerary_request)
+  
+  # 이미 방문한 장소 ID 목록
+  visit_place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place"]
+  
+  duration = calculate_duration(generate_itinerary_request.base_itinerary.start_at, generate_itinerary_request.base_itinerary.end_at)
+  
+  for day in range(duration):
+    # 해당 날짜의 장소 목록
+    place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place" and calculate_day_index(generate_itinerary_request.base_itinerary.start_at, x.data.start_time) == day]
+    place_count = len(place_ids)
+    
+    # 하루에 최대 5개 장소까지
+    if place_count >= 5:
+      continue
+    
+    # 콘텐츠 기반 추천으로 장소 추천
+    try:
+      recommendations = await content_based_service.recommend_places(
+        db=db,
+        theme=generate_itinerary_request.base_itinerary.theme or "여행",
+        relation=generate_itinerary_request.base_itinerary.relation or "혼자",
+        location=generate_itinerary_request.base_itinerary.location,
+        num_recommendations=5 - place_count,
+        exclude_place_ids=visit_place_ids
+      )
+      
+      print(f"[DEBUG] Day {day+1}: Requested {5 - place_count} recommendations, got {len(recommendations)}")
+      
+      # 추천된 장소들을 일정에 추가
+      for rec in recommendations:
+        place_id = rec['place_id']
+        place = await get_place(db, place_id)
+        
+        if place:
+          place_schema = PlaceSchema.model_validate(place)
+          itinerary.items.append(ItineraryItemResponse(
+            item_type="place", 
+            data=ItineraryPlaceItem(
+              item_id=-1,
+              itinerary_id=-1,
+              place_id=place_id,
+              accommodation_id=None,
+              start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=9),
+              end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=18),
+              is_required=True,
+              created_at=datetime.now(),
+              info=place_schema,
+            )
+          ))
+          visit_place_ids.append(place_id)
+      
+    except Exception as e:
+      print(f"Error in content-based recommendation for day {day}: {e}")
+      continue
+  
   return itinerary

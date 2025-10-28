@@ -127,7 +127,7 @@ pipeline {
                                 --name ${containerName} \\
                                 --network ${dockerNetwork} \\
                                 --restart unless-stopped \\
-                                --label "app=docgen-fastapi" \\
+                                --label "app=inpick-fastapi" \\
                                 --label "env=${deployEnv}" \\
                                 --label "version=${BUILD_NUMBER}" \\
                                 --label "branch=${currentBranch}" \\
