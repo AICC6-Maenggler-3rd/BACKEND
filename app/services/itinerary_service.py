@@ -39,30 +39,6 @@ async def generate_itinerary(db: AsyncSession, generate_itinerary_request: Itine
         raise ValueError(f"Invalid model name: {generate_itinerary_request.model_name}")
     return itinerary
 
-async def get_itinerary_items(db: AsyncSession, user_id: int) -> List[ItineraryItem]:
-    result = await db.execute(
-        select(ItineraryItem)
-        .join(Itinerary, ItineraryItem.itinerary_id == Itinerary.itinerary_id)
-        .filter(Itinerary.user_id == user_id)
-    )
-    return result.scalars().all()
-
-async def get_itinerary_places(db: AsyncSession, itinerary_items: List[ItineraryItem]) -> List[Place]:
-    result = await db.execute(
-        select(Place)
-        .join(ItineraryItem, Place.place_id == ItineraryItem.place_id)
-        .filter(ItineraryItem.itinerary_id.in_(itinerary_items))
-    )
-    return result.scalars().all()
-
-async def get_itinerary_accommodations(db: AsyncSession, itinerary_items: List[ItineraryItem]) -> List[Accommodation]:
-    result = await db.execute(
-        select(Accommodation)
-        .join(ItineraryItem, Accommodation.accommodation_id == ItineraryItem.accommodation_id)
-        .filter(ItineraryItem.itinerary_id.in_(itinerary_items))
-    )
-    return result.scalars().all()
-
 async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> ItineraryResponse:
     """
     itinerary_id로 일정과 관련 데이터를 조회하고
@@ -142,36 +118,6 @@ async def get_itinerary_response(db: AsyncSession, itinerary_id: int) -> Itinera
         items=items_response,
         name=itinerary.name
     )
-
-
-async def create_itinerary(db:AsyncSession, itinerary_data:ItineraryCreate):
-    itinerary = Itinerary(
-        user_id=itinerary_data.user_id,
-        relation=itinerary_data.relation,
-        location=itinerary_data.location,
-        theme=itinerary_data.theme,
-        start_at=itinerary_data.start_at,
-        end_at=itinerary_data.end_at,
-        name=itinerary_data.name
-    )
-    db.add(itinerary)
-    await db.flush()  # itinerary_id 확보
-
-    for item_data in itinerary_data.items:
-        item = ItineraryItem(
-            itinerary_id=itinerary.itinerary_id,
-            place_id=item_data.place_id,
-            accommodation_id=item_data.accommodation_id,
-            start_time=item_data.start_time,
-            end_time=item_data.end_time,
-            is_required=item_data.is_required,
-        )
-        db.add(item)
-
-    await db.commit()
-    await db.refresh(itinerary)
-    
-    return await get_itinerary_response(db, itinerary.itinerary_id)
 
 async def create_itinerary_with_name(db:AsyncSession, itinerary_data:ItineraryCreateRequest):
 

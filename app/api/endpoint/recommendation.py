@@ -8,8 +8,6 @@ from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.postgre_model import Place, Region
-from app.api.function.common import haversine_distance
-# from app.contentmodel.content_based_recommendation_service import content_based_service
 from app.repositories.placedb import get_place
 from app.schemas.postgre_schema import PlaceSchema
 from app.ml.contentBasedFiltering.main import TravelRecommendationSystem as CBF
@@ -24,19 +22,6 @@ region_file = root_dir / 'uploads' / 'region.csv'
 sys.path.append(str(root_dir))
 
 router = APIRouter()
-
-@router.get("/cf/place")
-async def make_cf_place_recommendation(db: AsyncSession = Depends(get_db)):
-    return 'success'
-
-@router.get('/test/distance')
-async def test_distance(db: AsyncSession = Depends(get_db)):
-    try:
-        df_place = pd.read_csv(place_file)
-        df_place['suitable']= df_place['category'].apply(lambda x : x.split(','))
-    except Exception as e:
-        return {'error' : str(e)}
-    return 'success'
 
 @router.get("/places")
 async def recommend_places_from_user_input(
