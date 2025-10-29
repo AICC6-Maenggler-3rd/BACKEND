@@ -130,12 +130,15 @@ def pick_day_route(candidates:List[Dict[str,Any]],
     return chosen
 
 # ---------- 장소 검색 함수 ----------
-async def search_places(index_dir:str, query:str, count:int):
+async def search_places(index_dir:str, query:str, count:int, lat:float = None, lng:float = None):
     index, meta = load_index_and_meta(index_dir)
     _query = f"지역명 있으면 무조건 해당 지역만 {query}"
     qv = embed_query(_query)
     
-    candidates = search_candidates_without_position(index, meta, qv)
+    if lat is not None and lng is not None:
+        candidates = search_candidates(index, meta, qv, lat, lng, 50)
+    else:
+        candidates = search_candidates_without_position(index, meta, qv)
     ids = [candidate["id"] for candidate in candidates]
     return ids[:count]
 # ---------- 메인 계획 함수 ----------
