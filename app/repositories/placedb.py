@@ -60,6 +60,10 @@ async def get_places(db: AsyncSession) -> list[Place]:
     result = await db.execute(select(Place))
     return result.scalars().all()
 
+async def get_places_by_ids(db: AsyncSession, ids: List[int]) -> List[Place]:
+    result = await db.execute(select(Place).where(Place.place_id.in_(ids)))
+    return result.scalars().all()
+
 async def get_all_places(db: AsyncSession) -> List[Place]:
     """모든 장소 정보를 가져오는 함수 (콘텐츠 기반 추천용)"""
     from sqlalchemy.orm import joinedload

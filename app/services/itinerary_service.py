@@ -9,7 +9,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
 from datetime import datetime, timezone, timedelta
 from app.repositories.placedb import get_place
-from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary, nextpoi_generate_itinerary, content_based_generate_itinerary, sas_rec_generate_itinerary, rag_gpt_generate_itinerary
+from app.services.generate_itinerary_service import none_generate_itinerary, nextpoi_generate_itinerary, content_based_generate_itinerary, sas_rec_generate_itinerary, rag_gpt_generate_itinerary
 from sqlalchemy import func
 
 
@@ -23,11 +23,7 @@ def add_korean_timezone(dt: datetime) -> datetime:
 async def generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 들어온 정보를 이용해서 db에서 장소와 숙소 정보를 조회하여  ItineraryResponse 생성
     # db에 itinerary를 추가하지는 않음
-    if generate_itinerary_request.model_name == "none":
-        itinerary = await none_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "random":
-        itinerary = await random_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "gru4rec":
+    if generate_itinerary_request.model_name == "gru4rec":
         itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "sas_rec":
         itinerary = await sas_rec_generate_itinerary(db, generate_itinerary_request)
