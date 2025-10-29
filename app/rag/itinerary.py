@@ -61,7 +61,7 @@ def embed_query(text:str):
 def make_query(companion:str, themes:List[str]):
     # 간단 프롬프트 결합
     t = ", ".join(themes) if themes else ""
-    return f"여행 동행: {companion}. 선호 테마: {t}."
+    return f"여행 동행: {companion}. 선호 테마: {t}. "
 
 def search_candidates(index, meta, query_vec, center_lat, center_lng, radius_km, cand_k=CAND_K):
     D, I = index.search(query_vec, cand_k)
@@ -132,7 +132,8 @@ def pick_day_route(candidates:List[Dict[str,Any]],
 # ---------- 장소 검색 함수 ----------
 async def search_places(index_dir:str, query:str, count:int):
     index, meta = load_index_and_meta(index_dir)
-    qv = embed_query(query)
+    _query = f"지역명 있으면 무조건 해당 지역만 {query}"
+    qv = embed_query(_query)
     
     candidates = search_candidates_without_position(index, meta, qv)
     ids = [candidate["id"] for candidate in candidates]
