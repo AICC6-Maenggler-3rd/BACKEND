@@ -122,7 +122,7 @@ GRU(Gated Recurrent Unit)는 순서를 가진 데이터를 처리하며
    - Recall@10, MRR@10 기준으로 모델 성능 검증
 
 6. **결과**
-   - best recall@10=0.740 at epoch 23
+   - best [EP23] train_loss=2.7507 valid_loss=2.9945 recall@10=0.740 mrr@10=0.545
 ---
 
 ## 🧭 추론 (일정 생성)

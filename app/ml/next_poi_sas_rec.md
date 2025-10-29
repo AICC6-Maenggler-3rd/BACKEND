@@ -121,3 +121,7 @@ get_next_poi_list(
 - idx2place를 통해 실제 장소 ID로 복원
 
 - 거리 조건(step_radius_km)을 만족하는 상위 장소 반환
+
+
+### 평가
+- Epoch 25 | Loss: 1.6256 | Recall@10: 0.6438

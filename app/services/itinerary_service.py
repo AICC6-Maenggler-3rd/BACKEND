@@ -9,7 +9,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional, List, Union
 from datetime import datetime, timezone, timedelta
 from app.repositories.placedb import get_place
-from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary, nextpoi_generate_itinerary, content_based_generate_itinerary, sas_rec_generate_itinerary
+from app.services.generate_itinerary_service import none_generate_itinerary, random_generate_itinerary, nextpoi_generate_itinerary, content_based_generate_itinerary, sas_rec_generate_itinerary, rag_gpt_generate_itinerary
 from sqlalchemy import func
 
 
@@ -31,6 +31,8 @@ async def generate_itinerary(db: AsyncSession, generate_itinerary_request: Itine
         itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "sas_rec":
         itinerary = await sas_rec_generate_itinerary(db, generate_itinerary_request)
+    elif generate_itinerary_request.model_name == "rag_gpt":
+        itinerary = await rag_gpt_generate_itinerary(db, generate_itinerary_request)
     elif generate_itinerary_request.model_name == "content_based":
         itinerary = await content_based_generate_itinerary(db, generate_itinerary_request)
     else:
