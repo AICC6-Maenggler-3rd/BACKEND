@@ -16,7 +16,7 @@ from typing import List
 
 
 async def get_generate_model_list()-> List[str]:
-  return ["gru4rec", "sas_rec", "content_based","rag_gpt", "random"]
+  return ["gru4rec", "sas_rec", "content_based","rag_gpt"]
 
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
@@ -48,48 +48,6 @@ async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: 
             )
             itinerary.items.append(ItineraryItemResponse(item_type="place", data=place_data))
     return itinerary
-
-async def random_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
-  # 기존에 있는 장소는 유지하고, 하루에 장소가 3개가 되도록 랜덤으로 장소를 추가
-  itinerary = await none_generate_itinerary(db, generate_itinerary_request)
-
-  duration = calculate_duration(generate_itinerary_request.base_itinerary.start_at, generate_itinerary_request.base_itinerary.end_at)
-  print("duration", duration)
-  for day in range(duration):
-    # 해당 날짜의 장소 목록
-    place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place" and calculate_day_index(generate_itinerary_request.base_itinerary.start_at, x.data.start_time) == day]
-    print("place_ids", place_ids)
-    place_count = len(place_ids)
-    if place_count >= 3:
-      continue
-    # 해달 날짜의 장소 갯수가 3개가 되도록 중복되지 않게 랜덤하게 추가
-    for i in range(3 - place_count):
-      # 해달날짜에 해당하는 place_id 목록
-      is_added = False
-      for k in range(10):
-        print("get random place")
-        place = await get_random_place(db)
-        print("place", place.place_id)
-        if place.place_id not in place_ids:
-          is_added = True
-          break
-      if not is_added:
-        print("failed to add place")
-        break
-      
-      itinerary.items.append(ItineraryItemResponse(item_type="place", data=ItineraryPlaceItem(
-        item_id=-1,
-        itinerary_id=-1,
-        place_id=place.place_id,
-        accommodation_id=None,
-        start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=9),
-        end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day) + timedelta(hours=18),
-        is_required=True,
-        created_at=datetime.now(),
-        info=PlaceSchema.model_validate(place),
-      )))
-  
-  return itinerary
 
 # 기간 계산, 시작일과 종료일 포함, 자정을 기준으로 계산
 def calculate_duration(start_at: datetime, end_at: datetime) -> int:
@@ -312,43 +270,3 @@ async def rag_gpt_generate_itinerary(db: AsyncSession, generate_itinerary_reques
         info=place_schema,
       )))
   return itinerary
-  # for day in range(duration):
-  #   # 해당 날짜의 장소 목록
-  #   place_ids = [x.data.place_id for x in itinerary.items if x.item_type == "place" and calculate_day_index(generate_itinerary_request.base_itinerary.start_at, x.data.start_time) == day]
-  #   place_count = len(place_ids)
-  #   if place_count >= 5:
-  #     continue
-    
-
-
-  #   # RAG-GPT를 사용하여 장소 추천
-  #   plan = plan_itinerary(
-  #     index_dir=RAG_DIR,
-  #     center_lat=location.address_la,
-  #     center_lng=location.address_lo,
-  #     days=duration,
-  #     companion=generate_itinerary_request.base_itinerary.relation,
-  #     themes=generate_itinerary_request.base_itinerary.theme,
-  #     must_visits_by_day={day+1: place_ids},
-  #     radius_km=5.0,
-  #     step_radius_km=1.0,
-  #     stops_per_day=5,
-  #   )
-  #   for day in plan:
-  #     for item in day["items"]:
-  #       print("item", item)
-  #       place = await get_place(db, int(item["id"]))
-  #       print("place", place)
-  #       place_schema = PlaceSchema.model_validate(place)
-  #       itinerary.items.append(ItineraryItemResponse(item_type="place", data=ItineraryPlaceItem(
-  #         item_id=-1,
-  #         itinerary_id=-1,
-  #         place_id=item["id"],
-  #         accommodation_id=None,
-  #         start_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day["day"]-1) + timedelta(hours=9),
-  #         end_time=generate_itinerary_request.base_itinerary.start_at + timedelta(days=day["day"]-1) + timedelta(hours=18),
-  #         is_required=True,
-  #         created_at=datetime.now(),
-  #         info=place_schema,
-  #       )))
-  # return itinerary

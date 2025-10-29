@@ -61,7 +61,7 @@ def embed_query(text:str):
 def make_query(companion:str, themes:List[str]):
     # 간단 프롬프트 결합
     t = ", ".join(themes) if themes else ""
-    return f"여행 동행: {companion}. 선호 테마: {t}. 사진 잘 나오는 인기 명소와 현지 맛집 위주."
+    return f"여행 동행: {companion}. 선호 테마: {t}. "
 
 def search_candidates(index, meta, query_vec, center_lat, center_lng, radius_km, cand_k=CAND_K):
     D, I = index.search(query_vec, cand_k)
@@ -77,6 +77,17 @@ def search_candidates(index, meta, query_vec, center_lat, center_lng, radius_km,
         s_geo  = geo_weight_km(dist)
         score  = ALPHA*s_text + (1-ALPHA)*s_geo
         out.append({**mi, "dist_km":dist, "s_text":s_text, "s_geo":s_geo, "score":score})
+    out.sort(key=lambda x:x["score"], reverse=True)
+    return out
+
+def search_candidates_without_position(index, meta, query_vec, cand_k=CAND_K):
+    D, I = index.search(query_vec, cand_k)
+    out=[]
+    for j in range(len(I[0])):
+        mi = meta[int(I[0][j])]
+        s_text = float(D[0][j])
+        score  = ALPHA*s_text
+        out.append({**mi,"s_text":s_text, "score":score})
     out.sort(key=lambda x:x["score"], reverse=True)
     return out
 
@@ -118,6 +129,18 @@ def pick_day_route(candidates:List[Dict[str,Any]],
         chosen.append(best); idset.add(idstr(best["id"]))
     return chosen
 
+# ---------- 장소 검색 함수 ----------
+async def search_places(index_dir:str, query:str, count:int, lat:float = None, lng:float = None):
+    index, meta = load_index_and_meta(index_dir)
+    _query = f"지역명 있으면 무조건 해당 지역만 {query}"
+    qv = embed_query(_query)
+    
+    if lat is not None and lng is not None:
+        candidates = search_candidates(index, meta, qv, lat, lng, 50)
+    else:
+        candidates = search_candidates_without_position(index, meta, qv)
+    ids = [candidate["id"] for candidate in candidates]
+    return ids[:count]
 # ---------- 메인 계획 함수 ----------
 async def plan_itinerary(
                    index_dir:str,
