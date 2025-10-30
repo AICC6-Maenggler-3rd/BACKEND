@@ -23,14 +23,12 @@ def add_korean_timezone(dt: datetime) -> datetime:
 async def generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 들어온 정보를 이용해서 db에서 장소와 숙소 정보를 조회하여  ItineraryResponse 생성
     # db에 itinerary를 추가하지는 않음
-    if generate_itinerary_request.model_name == "gru4rec":
+    if generate_itinerary_request.model_name == "맞춤형 일정 추천":
         itinerary = await nextpoi_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "sas_rec":
+    elif generate_itinerary_request.model_name == "실시간 관심 기반 추천":
         itinerary = await sas_rec_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "rag_gpt":
+    elif generate_itinerary_request.model_name == "GPT 추천":
         itinerary = await rag_gpt_generate_itinerary(db, generate_itinerary_request)
-    elif generate_itinerary_request.model_name == "content_based":
-        itinerary = await content_based_generate_itinerary(db, generate_itinerary_request)
     else:
         raise ValueError(f"Invalid model name: {generate_itinerary_request.model_name}")
     return itinerary

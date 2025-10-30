@@ -16,7 +16,7 @@ from typing import List
 
 
 async def get_generate_model_list()-> List[str]:
-  return ["gru4rec", "sas_rec", "content_based","rag_gpt"]
+  return ["맞춤형 일정 추천", "실시간 관심 기반 추천","GPT 추천"]
 
 async def none_generate_itinerary(db: AsyncSession, generate_itinerary_request: ItineraryGenerate) -> ItineraryResponse:
     # 아무것도 하지 않고 그냥 일정 생성
