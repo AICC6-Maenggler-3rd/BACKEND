@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 import sys
 from pathlib import Path
 import pandas as pd
@@ -8,11 +8,11 @@ from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.postgre_model import Place, Region
-from app.api.function.common import haversine_distance
-from app.contentmodel.content_based_recommendation_service import content_based_service
 from app.repositories.placedb import get_place
 from app.schemas.postgre_schema import PlaceSchema
-
+from app.ml.contentBasedFiltering.main import TravelRecommendationSystem as CBF
+from app.core.config import MODEL_DIR
+from huggingface_hub import hf_hub_download
 # 프로젝트 루트 디렉토리를 파이썬 경로에 추가
 current_dir = Path(__file__).resolve().parent 
 root_dir = current_dir.parent.parent.parent
@@ -23,121 +23,45 @@ sys.path.append(str(root_dir))
 
 router = APIRouter()
 
-@router.get("/cf/place")
-async def make_cf_place_recommendation(db: AsyncSession = Depends(get_db)):
-    """
-    Collaborative Filtering 기반 장소 추천
-    
-    Args:
-        더미데이터 : uploads/dummy_data/cf_ratings.csv
-        user_id,place_id,relation,location,theme,duration,rating
-        1127,4546,친구와,전라남도 고흥군 과역면 호덕리,바다,1박2일,3.3
-
-        지역데이터 : uploads/region.csv
-        name,address_lo,address_la
-        서울특별시,126.978652258309,37.5668260046608
-
-        장소데이터 : select * from place 
-    Returns:
-        dict: 장소 추천 결과
-    """
-
-    try:
-        # DB에서 장소 데이터 가져오기
-        query = select(Place.place_id, Place.address_la, Place.address_lo)
-        result = await db.execute(query)
-        place_data = result.fetchall()
-
-        df_ratings = pd.read_csv(dummy_file)
-        df_region = pd.read_csv(region_file)
-        # DataFrame으로 변환
-        df_place = pd.DataFrame(place_data, columns=['place_id', 'address_la', 'address_lo'])
-
-        # merge 수행
-        df_result = df_ratings.merge(
-        df_region,
-        left_on='location',
-        right_on='name',
-        how='left'
-        ).drop(columns=['name'])
-        df_result = df_result.rename(columns={
-            'address_lo': 'location_lo',
-            'address_la': 'location_la'
-        })
-
-        # place merge
-        df_result = df_result.merge(
-            df_place,
-            on='place_id',
-            how='left'
-        ).rename(columns={
-            'address_lo': 'place_lo',
-            'address_la': 'place_la'
-        })
-
-        # 거리 계산
-        df_result['distance'] = df_result.apply(
-            lambda row: haversine_distance(
-                row['location_la'], row['location_lo'], row['place_la'], row['place_lo']
-                ), axis=1)
-
-        # # 거리 제한을 더욱 강화
-        # if distance > 200:
-        #     distance_score = -20  # 200km 이상은 매우 큰 마이너스 점수
-        # elif distance > 150:
-        #     distance_score = -10  # 150-200km는 큰 마이너스 점수
-        # elif distance > 100:
-        #     distance_score = 0    # 100-150km는 중립
-        # elif distance > 50:
-        #     distance_score = 3    # 50-100km는 보통 점수
-        # else:
-        #     distance_score = 8    # 50km 이내는 매우 높은 점수
-        print("========================================")
-        print("df_result", df_result['distance'])
-        print("df_result", df_result['user_id'].max())
-        print("df_result", df_result['place_id'].max())
-        print("df_result", df_result['user_id'].min())
-        print("df_result", df_result['place_id'].min())
-        print("df_result", df_result.shape)
-        print("df_result", df_result.columns)
-        print("df_result", df_result.loc[:, ['place_id', 'location','distance']])
-        print("========================================")
-        
-    except Exception as e:
-        return {'error' : str(e)}
-    return 'success'
-
-@router.get('/test/distance')
-async def test_distance(db: AsyncSession = Depends(get_db)):
-    try:
-        df_place = pd.read_csv(place_file)
-        df_place['suitable']= df_place['category'].apply(lambda x : x.split(','))
-    except Exception as e:
-        return {'error' : str(e)}
-    return 'success'
-
 @router.get("/places")
 async def recommend_places_from_user_input(
-    theme: str,
-    relation: str,
-    location: str,
-    num_recommendations: int = 10,
+    address: str,
+    suitables: list[str] = Query(default=[], alias="suitables[]"),
+    categorys: list[str] = Query(default=[], alias="categorys[]"),
+    center_location: list[float] = Query(alias="center_location[]"),
     db: AsyncSession = Depends(get_db)
 ):
     """사용자 입력에 기반한 content_based 장소 추천"""
     try:
-        # content_based 추천 실행
-        recommendations = await content_based_service.recommend_places(
-            db=db,
-            theme=theme,
-            relation=relation,
-            location=location,
-            num_recommendations=num_recommendations,
-            exclude_place_ids=[]
+        model_path = hf_hub_download(
+        repo_id='JY1211/inpick-cbf',
+        filename="CBF_recommendation_model.pkl",
+        cache_dir=MODEL_DIR,  # 다운로드 경로 지정
         )
+        model = CBF()
+        loaded = model.load_model(model_path)
+        if not loaded:
+            raise HTTPException(status_code=500, detail=f"Failed to load recommendation model from {model_path}")
+        # center_location은 쿼리에서 배열 형태로 들어오므로 튜플로 변환
+        if center_location is None or len(center_location) != 2:
+            raise HTTPException(status_code=422, detail="center_location must have exactly two numbers [lat, lon]")
+        center_location_tuple = (float(center_location[0]), float(center_location[1]))
+
+        recommendations = model.recommend(
+                address=address,
+                suitables=suitables,
+                categorys=categorys,
+                center_location=center_location_tuple,
+        )
+        print(recommendations['place_id'].tolist())
+        
         
         # 추천 결과에서 place_id 추출
-        place_ids = [rec['place_id'] for rec in recommendations]
+        try:
+            place_ids = recommendations['place_id'].tolist()
+        except Exception:
+            # fallback: dict 레코드 리스트로 가정
+            place_ids = [rec['place_id'] for rec in recommendations]
         
         # 각 place_id에 대해 장소 상세 정보 가져오기
         places = []
