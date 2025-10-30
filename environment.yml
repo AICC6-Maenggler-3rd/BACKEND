@@ -36,3 +36,5 @@ dependencies:
       - databases
       - sqlalchemy
       - faiss-cpu
+      - huggingface-hub
+      - implicit

@@ -1,5 +1,5 @@
 # backend/main.py
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import uuid
@@ -31,17 +31,6 @@ app.include_router(api_router, prefix="")
 @app.get("/")
 async def root():
     return {"message": "FastAPI 서버가 정상적으로 실행 중입니다!"}
-
-@app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    file_id = str(uuid.uuid4())
-    file_path = os.path.join(UPLOAD_DIR, f"{file_id}.pdf")
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return {"file_id": file_id, "filename": file.filename, "status": "uploaded"}
-
 
 @app.on_event("startup")
 async def startup_event():
