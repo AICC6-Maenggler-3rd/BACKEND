@@ -11,6 +11,7 @@ dependencies:
   - cpuonly
   - mkl
   - mkl-service
+  - scikit-learn
   - pip
   - pip:
       - fastapi
@@ -34,3 +35,6 @@ dependencies:
       - asyncpg
       - databases
       - sqlalchemy
+      - faiss-cpu
+      - huggingface-hub
+      - implicit

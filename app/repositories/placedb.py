@@ -60,6 +60,19 @@ async def get_places(db: AsyncSession) -> list[Place]:
     result = await db.execute(select(Place))
     return result.scalars().all()
 
+async def get_places_by_ids(db: AsyncSession, ids: List[int]) -> List[Place]:
+    result = await db.execute(select(Place).where(Place.place_id.in_(ids)))
+    return result.scalars().all()
+
+async def get_all_places(db: AsyncSession) -> List[Place]:
+    """모든 장소 정보를 가져오는 함수 (콘텐츠 기반 추천용)"""
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(Place)
+        .options(joinedload(Place.categories))
+    )
+    return result.scalars().unique().all()
+
 async def get_insta_nicknames(db: AsyncSession) -> list[str]:
     """인스타그램 닉네임 목록 조회 (중복 제거)"""
     result = await db.execute(

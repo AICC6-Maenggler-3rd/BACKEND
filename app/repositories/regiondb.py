@@ -18,6 +18,10 @@ async def get_region_by_name(db: AsyncSession, name: str):
     row = result.mappings().one_or_none()
     return row
 
+async def get_region_by_name2(db: AsyncSession, name: str):
+  query = select(Region).where(Region.name == name)
+  return (await db.execute(query)).scalar_one_or_none()
+
 async def get_all_region(db: AsyncSession):
     sql = text("""
                     SELECT

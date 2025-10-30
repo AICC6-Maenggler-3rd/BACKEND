@@ -5,12 +5,22 @@ from app.repositories import placedb
 from app.db.postgresql import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.place_schema import PlaceListResponse
+from app.services.place_service import search_place_rag
 router = APIRouter()
 
 @router.get("/search")
 async def search_place(query: str, page: int = 1, limit: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
     try:
         place_list = await placedb.search_place(db, query, page, limit)
+        return place_list
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/search_rag")
+async def search_place_by_rag(query: str, count: int = 30, db: AsyncSession = Depends(get_db)) -> PlaceListResponse:
+    try:
+        place_list = await search_place_rag(db, query, count)
         return place_list
     except Exception as e:
         print(e)
