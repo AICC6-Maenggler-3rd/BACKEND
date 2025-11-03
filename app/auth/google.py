@@ -23,7 +23,7 @@ class GoogleOAuth(OAuthProvider):
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
     async def get_tokens(self, code: str) -> Dict:
-      async with httpx.AsyncClient() as client:
+      async with httpx.AsyncClient(timeout=10.0, read=20.0) as client:
           resp = await client.post(self.TOKEN_URL, data={
               "code": code,
               "client_id": self.CLIENT_ID,
