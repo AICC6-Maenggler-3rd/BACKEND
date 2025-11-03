@@ -21,4 +21,4 @@ EXPOSE 8000
 
 # 실행 커맨드 (Gunicorn + Uvicorn Worker)
 CMD ["conda", "run", "--no-capture-output", "-n", "inpick-fastapi", \
-     "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info"]
+     "uvicorn", "app.main:app","--proxy-headers", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info"]
