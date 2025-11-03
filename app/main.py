@@ -11,18 +11,6 @@ from app.db.postgresql import engine, Base
 from app.middlewares.log_middleware import UserLogMiddleware
 app = FastAPI()
 
-
-
-# CORS 설정 (React 개발 서버: http://localhost:5180)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5180", "http://192.168.10.220:8381", "https://inpick.aicc-project.com"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -39,6 +27,16 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_mongo_connection()
+
+# CORS 설정 (React 개발 서버: http://localhost:5180)
+# ⚠️ 순서 중요: CORS는 다른 미들웨어 보다 먼저 또는 나중에 등록해야 함
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5180", "http://192.168.10.220:8381", "https://inpick.aicc-project.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 로그 미들웨어 등록
 app.add_middleware(UserLogMiddleware)
