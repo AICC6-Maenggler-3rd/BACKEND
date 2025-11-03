@@ -13,13 +13,6 @@ from app.schemas.postgre_schema import PlaceSchema
 from app.ml.contentBasedFiltering.main import TravelRecommendationSystem as CBF
 from app.core.config import MODEL_DIR
 from huggingface_hub import hf_hub_download
-# 프로젝트 루트 디렉토리를 파이썬 경로에 추가
-current_dir = Path(__file__).resolve().parent 
-root_dir = current_dir.parent.parent.parent
-place_file = root_dir / 'uploads' / 'place.csv'
-dummy_file = root_dir / 'uploads' / 'dummy_data'/ 'cf_ratings.csv'
-region_file = root_dir / 'uploads' / 'region.csv'
-sys.path.append(str(root_dir))
 
 router = APIRouter()
 
