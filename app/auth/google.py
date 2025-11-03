@@ -23,7 +23,7 @@ class GoogleOAuth(OAuthProvider):
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
     async def get_tokens(self, code: str) -> Dict:
-      async with httpx.AsyncClient(timeout=10.0) as client:
+      async with httpx.AsyncClient() as client:
           resp = await client.post(self.TOKEN_URL, data={
               "code": code,
               "client_id": self.CLIENT_ID,
@@ -36,7 +36,7 @@ class GoogleOAuth(OAuthProvider):
 
     async def fetch_user_info(self, tokens: Dict) -> Dict:
         headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-        async with httpx.AsyncClient(timeout=10.0, read=20.0) as client:
+        async with httpx.AsyncClient() as client:
             r = await client.get(self.USERINFO_URL, headers=headers)
             r.raise_for_status()
             return r.json()
