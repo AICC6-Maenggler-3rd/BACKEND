@@ -35,7 +35,7 @@ async def shutdown_event():
 # ⚠️ 순서 중요: CORS는 다른 미들웨어 보다 먼저 또는 나중에 등록해야 함
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5180", "http://192.168.10.220:8381", "https://inpick.aicc-project.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
