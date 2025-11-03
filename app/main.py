@@ -8,6 +8,9 @@ from app.api.routers import api_router
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.db.postgresql import engine, Base
 
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
 from app.middlewares.log_middleware import UserLogMiddleware
 app = FastAPI()
 
@@ -38,5 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "192.168.10.220", "inpick.aicc-project.com"])
+app.add_middleware(HTTPSRedirectMiddleware)
 # 로그 미들웨어 등록
 app.add_middleware(UserLogMiddleware)
