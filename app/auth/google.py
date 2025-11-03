@@ -36,7 +36,7 @@ class GoogleOAuth(OAuthProvider):
 
     async def fetch_user_info(self, tokens: Dict) -> Dict:
         headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0, read=20.0) as client:
             r = await client.get(self.USERINFO_URL, headers=headers)
             r.raise_for_status()
             return r.json()
