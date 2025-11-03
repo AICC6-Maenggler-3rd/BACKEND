@@ -8,7 +8,7 @@ POI_MODEL_PATH = MODEL_DIR / "nextpoi_gru4rec.pt"
 POI_MODEL_PATH_SAS_REC = MODEL_DIR / "nextpoi_sas_rec.pt"
 PLACES_PATH = MODEL_DIR / "places_enriched.csv"
 class Settings(BaseSettings):
-    front_url: str = "http://localhost:5180"
+    front_url: str
     MONGO_URI: str
     MONGO_DB_NAME: str
     postgresql_url: str
