@@ -7,19 +7,21 @@ from app.repositories import placedb
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.regiondb import get_region_by_name
 import re
+import traceback
 async def search_place_rag(db: AsyncSession, query: str, count: int) -> PlaceListResponse:
     try:
         region_name = get_region_name(query)
+        print(f"[RAG Search] Query: {query}, Count: {count}, RAG_DIR: {RAG_DIR}")
         if region_name:
             print("region_name", region_name)
             location = await get_region_by_name(db, region_name)
             if location:
                 print("location", location)
-                ids = await search_places(RAG_DIR, query, count, location.address_la, location.address_lo)
+                ids = await search_places(str(RAG_DIR), query, count, location.address_la, location.address_lo)
             else:
-                ids = await search_places(RAG_DIR, query, count)
+                ids = await search_places(str(RAG_DIR), query, count)
         else:
-            ids = await search_places(RAG_DIR, query, count)
+            ids = await search_places(str(RAG_DIR), query, count)
         places = await placedb.get_places_by_ids(db, [int(id) for id in ids])
 
         result = PlaceListResponse(
@@ -29,7 +31,9 @@ async def search_place_rag(db: AsyncSession, query: str, count: int) -> PlaceLis
         )
         return result
     except Exception as e:
-        print(e)
+        error_trace = traceback.format_exc()
+        print(f"[RAG Search Error]: {e}")
+        print(f"[Traceback]: {error_trace}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

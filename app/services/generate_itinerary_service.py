@@ -243,7 +243,7 @@ async def rag_gpt_generate_itinerary(db: AsyncSession, generate_itinerary_reques
     return itinerary
 
   plan = await plan_itinerary(
-    index_dir=RAG_DIR,
+    index_dir=str(RAG_DIR),
     center_lat=location.address_la,
     center_lng=location.address_lo,
     days=duration,

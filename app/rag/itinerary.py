@@ -5,7 +5,6 @@ import numpy as np
 import faiss
 from openai import OpenAI
 from app.core.config import settings
-import base64
 # ---------- 설정 ----------
 INDEX_DIR = "faiss_store"                 # index.faiss + meta.json 위치
 EMBED_MODEL = "text-embedding-3-small"    # OpenAI 임베딩
@@ -25,22 +24,8 @@ def geo_weight_km(dist_km, tau=TAU_KM):
     return math.exp(-dist_km/tau)
 
 def load_index_and_meta(index_dir:str):
-
-    # idx = faiss.read_index(f"{index_dir}/index.faiss")
-
-    # 1️⃣ 파일 읽기
-    with open(f"{index_dir}/index.faiss", "rb") as f:
-        binary_data = f.read()
-
-    # 2️⃣ base64 인코딩 (선택적으로 다른 경로에서 전달할 때 유용)
-    encoded = base64.b64encode(binary_data).decode("utf-8")
-
-    # 3️⃣ base64 디코딩 후 numpy 배열로 변환
-    decoded = base64.b64decode(encoded)
-    buffer = np.frombuffer(decoded, dtype=np.uint8)
-
-    # 4️⃣ FAISS 인덱스로 역직렬화
-    idx = faiss.deserialize_index(buffer)
+    # FAISS 인덱스 직접 읽기
+    idx = faiss.read_index(f"{index_dir}/index.faiss")
     with open(f"{index_dir}/meta.json","r",encoding="utf-8") as f:
         meta = json.load(f)
     # meta 항목 예시: {"row":0,"id":"123","lat":37.57,"lng":126.98,"name":"경복궁","place_type":"관광지","themes":["문화·예술","관광"]}
@@ -200,6 +185,21 @@ async def plan_itinerary(
         } for p in route]
         output.append({"day": d, "items": items})
     return output
+
+# ---------- 사용 예 ----------
+if __name__ == "__main__":
+    plan = plan_itinerary(
+        center_lat=37.5324, center_lng=126.9906,    # 지역 좌표
+        days=3,                                     # 기간(day)
+        companion="가족",                           # 동행
+        themes=["문화·예술","관광","먹방"],          # 테마(복수)
+        must_visits_by_day={1:["1234"], 3:["987"]}, # 날짜별 필수 여행지
+        radius_km=25.0,                             # 검색 반경
+        step_radius_km=6.0,                         # 추가 탐색 거리(이동 최대)
+        stops_per_day=5
+    )
+    for day in plan:
+        print(f"Day {day['day']}: {[ (it['id'], it['name']) for it in day['items'] ]}")
 
 # ---------- 사용 예 ----------
 if __name__ == "__main__":
