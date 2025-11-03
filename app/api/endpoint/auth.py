@@ -116,12 +116,12 @@ async def social_callback(provider: str, request: Request, response: Response, c
 
     session_id = await create_session(user_id)
 
-    # log = ActivityLogBase(
-    #     user_id=user_id,
-    #     action="login",
-    #     metadata={}
-    # )
-    # await create_activity_log(log)
+    log = ActivityLogBase(
+        user_id=user_id,
+        action="login",
+        metadata={}
+    )
+    await create_activity_log(log)
 
     redirect = RedirectResponse(url=settings.front_url)
     redirect.set_cookie("session_id", session_id, httponly=True, max_age=1800, samesite="lax", secure=False)
