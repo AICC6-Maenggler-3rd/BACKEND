@@ -23,6 +23,38 @@ sys.path.append(str(root_dir))
 
 router = APIRouter()
 
+# 전역 모델 인스턴스 (한 번만 로드)
+_global_cbf_model = None
+
+async def get_cbf_model():
+    """CBF 모델을 싱글톤으로 관리"""
+    global _global_cbf_model
+    
+    if _global_cbf_model is None:
+        try:
+            print("[INFO] CBF 모델 로딩 시작...")
+            model_path = hf_hub_download(
+                repo_id='JY1211/inpick-cbf',
+                filename="CBF_recommendation_model.pkl",
+                cache_dir=MODEL_DIR,
+            )
+            print(f"[INFO] 모델 다운로드 완료: {model_path}")
+            
+            model = CBF()
+            loaded = model.load_model(model_path)
+            if not loaded:
+                raise Exception(f"Failed to load recommendation model from {model_path}")
+            
+            _global_cbf_model = model
+            print("[INFO] CBF 모델 로딩 완료")
+        except Exception as e:
+            print(f"[ERROR] CBF 모델 로딩 실패: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    return _global_cbf_model
+
 @router.get("/places")
 async def recommend_places_from_user_input(
     address: str,
@@ -33,15 +65,9 @@ async def recommend_places_from_user_input(
 ):
     """사용자 입력에 기반한 content_based 장소 추천"""
     try:
-        model_path = hf_hub_download(
-        repo_id='JY1211/inpick-cbf',
-        filename="CBF_recommendation_model.pkl",
-        cache_dir=MODEL_DIR,  # 다운로드 경로 지정
-        )
-        model = CBF()
-        loaded = model.load_model(model_path)
-        if not loaded:
-            raise HTTPException(status_code=500, detail=f"Failed to load recommendation model from {model_path}")
+        # 전역 모델 가져오기 (싱글톤)
+        model = await get_cbf_model()
+        
         # center_location은 쿼리에서 배열 형태로 들어오므로 튜플로 변환
         if center_location is None or len(center_location) != 2:
             raise HTTPException(status_code=422, detail="center_location must have exactly two numbers [lat, lon]")
@@ -53,7 +79,7 @@ async def recommend_places_from_user_input(
                 categorys=categorys,
                 center_location=center_location_tuple,
         )
-        print(recommendations['place_id'].tolist())
+        print(f"[INFO] 추천 결과: {recommendations['place_id'].tolist()}")
         
         
         # 추천 결과에서 place_id 추출
@@ -72,6 +98,10 @@ async def recommend_places_from_user_input(
                 places.append(place_schema.model_dump())
         
         return places
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] recommend_places_from_user_input: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
